@@ -155,18 +155,26 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     final st = _full?['status']?.toString() ?? 'unknown';
+    // "inProgress" copre lo stato del modulo Ekos Align (capture+solve in corso).
+    // Ma dopo che Ekos completa il solve con azione=Slew, lo status torna a
+    // "complete" mentre la MONTATURA è ancora in movimento: durante quella
+    // finestra dobbiamo lo stesso bloccare il pulsante (come fa Ekos).
+    // INDI espone EQUATORIAL_EOD_COORD.state="Busy" finché lo slew non finisce.
+    final mountState = (_full?['mount_coords'] as Map?)?['state']?.toString();
+    final mountSlewing = mountState == 'Busy';
     final inProgress = st == 'progress' || st == 'syncing' || st == 'slewing';
+    final lockUI = inProgress || mountSlewing;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 80),
       children: [
-        _imagePreviewCard(s, st, inProgress),
+        _imagePreviewCard(s, st, lockUI, mountSlewing),
         const SizedBox(height: 10),
-        _quickParamsCard(inProgress),
+        _quickParamsCard(lockUI),
         const SizedBox(height: 10),
-        _bigActionButton(s, inProgress),
+        _bigActionButton(s, inProgress, mountSlewing),
         const SizedBox(height: 8),
-        _solverActionRow(inProgress),
+        _solverActionRow(lockUI),
         const SizedBox(height: 10),
         // Mostra la solution SOLO se l'ultimo run è effettivamente completato.
         // Ekos restituisce sempre l'ultima solution riuscita (anche stale dopo
@@ -200,41 +208,48 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
           ),
           children: [
             Padding(padding: const EdgeInsets.all(10),
-                child: _advancedSection(inProgress)),
+                child: _advancedSection(lockUI)),
           ],
         ),
       ],
     );
   }
 
-  Widget _imagePreviewCard(AppState s, String st, bool inProgress) {
+  Widget _imagePreviewCard(AppState s, String st, bool inProgress, bool mountSlewing) {
     final hasFrame = s.lastFrameJpeg != null;
     final m = s.lastFrameMeta;
 
     Color statusColor;
     IconData statusIcon;
     String statusLabel;
-    switch (st) {
-      case 'complete':
-        statusColor = T.ok(context); statusIcon = Icons.check_circle;
-        statusLabel = 'COMPLETE'; break;
-      case 'failed':
-        statusColor = T.err(context); statusIcon = Icons.error;
-        statusLabel = 'FAILED'; break;
-      case 'aborted':
-        statusColor = T.warn(context); statusIcon = Icons.cancel;
-        statusLabel = 'ABORTED'; break;
-      case 'progress':
-      case 'syncing':
-      case 'slewing':
-        statusColor = T.accent(context); statusIcon = Icons.sync;
-        statusLabel = st.toUpperCase(); break;
-      case 'idle':
-        statusColor = T.muted(context); statusIcon = Icons.radio_button_unchecked;
-        statusLabel = 'IDLE'; break;
-      default:
-        statusColor = T.err(context); statusIcon = Icons.help_outline;
-        statusLabel = 'EKOS NON CONNESSO';
+    // Se la montatura è in slew (post-solve verso il target) l'HUD lo dice
+    // anche se Ekos Align ha già status=complete.
+    if (mountSlewing) {
+      statusColor = T.accent(context); statusIcon = Icons.sync;
+      statusLabel = 'SLEW TO TARGET…';
+    } else {
+      switch (st) {
+        case 'complete':
+          statusColor = T.ok(context); statusIcon = Icons.check_circle;
+          statusLabel = 'COMPLETE'; break;
+        case 'failed':
+          statusColor = T.err(context); statusIcon = Icons.error;
+          statusLabel = 'FAILED'; break;
+        case 'aborted':
+          statusColor = T.warn(context); statusIcon = Icons.cancel;
+          statusLabel = 'ABORTED'; break;
+        case 'progress':
+        case 'syncing':
+        case 'slewing':
+          statusColor = T.accent(context); statusIcon = Icons.sync;
+          statusLabel = st.toUpperCase(); break;
+        case 'idle':
+          statusColor = T.muted(context); statusIcon = Icons.radio_button_unchecked;
+          statusLabel = 'IDLE'; break;
+        default:
+          statusColor = T.err(context); statusIcon = Icons.help_outline;
+          statusLabel = 'EKOS NON CONNESSO';
+      }
     }
 
     return Container(
@@ -353,16 +368,34 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     );
   }
 
-  Widget _bigActionButton(AppState s, bool inProgress) {
+  Widget _bigActionButton(AppState s, bool inProgress, bool mountSlewing) {
+    // Pulsante disabilitato sia mentre Ekos sta eseguendo capture/solve sia
+    // mentre la montatura è in slew verso il target (post-solve).
+    // Si riattiva SOLO quando la montatura ha raggiunto il bersaglio, esatto
+    // come fa Ekos.
+    final disabled = _busy || inProgress || mountSlewing;
+    final IconData icon;
+    final String label;
+    if (mountSlewing) {
+      icon = Icons.sync;
+      label = 'MONTATURA IN SLEW…';
+    } else if (inProgress) {
+      icon = Icons.sync;
+      label = 'IN CORSO IN EKOS…';
+    } else if (_busy) {
+      icon = Icons.gps_fixed;
+      label = 'INVIO…';
+    } else {
+      icon = Icons.gps_fixed;
+      label = 'ACQUISISCI E RISOLVI';
+    }
     return Row(children: [
       Expanded(child: SizedBox(
         height: 56,
         child: ElevatedButton.icon(
-          onPressed: _busy || inProgress ? null : () => _captureAndSolve(s),
-          icon: Icon(inProgress ? Icons.sync : Icons.gps_fixed, size: 20),
-          label: Text(
-            inProgress ? 'IN CORSO IN EKOS…'
-                : (_busy ? 'INVIO…' : 'ACQUISISCI E RISOLVI'),
+          onPressed: disabled ? null : () => _captureAndSolve(s),
+          icon: Icon(icon, size: 20),
+          label: Text(label,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
                 letterSpacing: .5),
           ),
@@ -375,7 +408,8 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       SizedBox(
         height: 56, width: 56,
         child: OutlinedButton(
-          onPressed: inProgress ? () => _abort(s) : null,
+          // Abort utile sia durante capture/solve sia per fermare lo slew finale.
+          onPressed: (inProgress || mountSlewing) ? () => _abort(s) : null,
           style: OutlinedButton.styleFrom(
             foregroundColor: T.err(context),
             side: BorderSide(color: T.err(context).withValues(alpha: 0.5)),
