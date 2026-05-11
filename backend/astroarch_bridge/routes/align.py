@@ -562,7 +562,7 @@ async def ekos_capture_and_solve(
     Body:
       bin_index: int opzionale (0=1×1, 1=2×2, 2=3×3, 3=4×4)
       target_ra_hours, target_dec_deg: opzionali (setTargetCoords prima)
-      solver_action: int opzionale (0=GoTo target, 1=Sync, 2=Slew, 3=Nothing)
+      solver_action: int opzionale (Ekos enum: 0=Sync, 1=Slew, 2=Nothing)
       exposure_sec: float opzionale (applicato via INDI alla camera primaria)
       gain: float opzionale (applicato via INDI: CCD_GAIN.GAIN o CCD_CONTROLS.Gain)
     """
@@ -648,7 +648,7 @@ async def ekos_align_set(payload: dict = Body(default={})) -> dict:
 
     Body (tutti opzionali):
       bin_index: int (0=1×1, 1=2×2, 2=3×3, 3=4×4)
-      solver_action: int (0=GoTo, 1=Sync, 2=SlewTarget, 3=Nothing)
+      solver_action: int (Ekos enum: 0=Sync, 1=Slew, 2=Nothing)
       solver_mode: int (0=StellarSolver, 1=Remote)
       target_ra_hours, target_dec_deg
       target_position_angle: deg

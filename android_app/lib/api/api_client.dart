@@ -175,7 +175,7 @@ class ApiClient {
   /// L'utente vede tutto in Ekos sul desktop (FITS Viewer, log, sequenza solve).
   Future<Map<String, dynamic>> alignEkosCaptureAndSolve({
     int? binIndex, double? targetRaHours, double? targetDecDeg,
-    int? solverAction, // 0=GoTo, 1=Sync, 2=SlewTarget, 3=Nothing
+    int? solverAction, // Ekos enum: 0=Sync, 1=Slew, 2=Nothing
     double? exposureSec, double? gain,
   }) => post('/api/align/ekos_capture_and_solve', {
         if (binIndex != null) 'bin_index': binIndex,

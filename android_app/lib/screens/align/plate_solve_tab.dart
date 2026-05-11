@@ -26,13 +26,17 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
   final TextEditingController _expCtl = TextEditingController(text: '5');
   final TextEditingController _gainCtl = TextEditingController(text: '100');
   int _binIndex = 1;
-  int _solverAction = 1;       // 0=GoTo, 1=Sync, 2=SlewTarget, 3=Nothing
+  // Ekos AlignSolverAction enum: 0=Sync, 1=Slew, 2=Nothing
+  int _solverAction = 0;       // default: Sync
   int _solverMode = 0;         // 0=StellarSolver, 1=Remote
   bool _showAdvanced = false;
   bool _showLog = false;
 
   static const _kBin = 'pl_bin';
-  static const _kAction = 'pl_action';
+  // v2: nuovo enum (0=Sync, 1=Slew, 2=Nothing) — la chiave vecchia 'pl_action'
+  // aveva mapping sbagliato, salto a 'pl_action_v2' per non ereditare valori
+  // shiftati dalle installazioni precedenti.
+  static const _kAction = 'pl_action_v2';
   static const _kMode = 'pl_mode';
   static const _kExp = 'pl_exp';
   static const _kGain = 'pl_gain';
@@ -50,7 +54,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     final p = await SharedPreferences.getInstance();
     setState(() {
       _binIndex = p.getInt(_kBin) ?? 1;
-      _solverAction = p.getInt(_kAction) ?? 1;
+      _solverAction = p.getInt(_kAction) ?? 0;
       _solverMode = p.getInt(_kMode) ?? 0;
       final e = p.getDouble(_kExp);
       if (e != null) _expCtl.text = e.toString();
@@ -382,17 +386,18 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
           letterSpacing: 1.2, fontWeight: FontWeight.w600)),
       const SizedBox(width: 4),
       Expanded(child: Wrap(spacing: 4, runSpacing: 4, children: [
-        ChipToggle(label: 'Sync', selected: _solverAction == 1,
+        // Ekos enum: 0=Sync, 1=Slew, 2=Nothing
+        ChipToggle(label: 'Sync', selected: _solverAction == 0,
+            onTap: inProgress ? null : () => setState(() {
+              _solverAction = 0; _savePrefs();
+            })),
+        ChipToggle(label: 'Slew to target', selected: _solverAction == 1,
             onTap: inProgress ? null : () => setState(() {
               _solverAction = 1; _savePrefs();
             })),
-        ChipToggle(label: 'Slew to target', selected: _solverAction == 2,
+        ChipToggle(label: 'Niente', selected: _solverAction == 2,
             onTap: inProgress ? null : () => setState(() {
               _solverAction = 2; _savePrefs();
-            })),
-        ChipToggle(label: 'Niente', selected: _solverAction == 3,
-            onTap: inProgress ? null : () => setState(() {
-              _solverAction = 3; _savePrefs();
             })),
       ])),
     ]);
