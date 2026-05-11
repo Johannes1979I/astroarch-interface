@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -17,7 +18,7 @@ class DashboardScreen extends StatelessWidget {
         leading: IconButton(
             icon: const Icon(Icons.menu),
             onPressed: openShellDrawer),
-        title: Row(children: [const LiveDot(), const SizedBox(width: 10), const Text('Dashboard')]),
+        title: Row(children: [const LiveDot(), const SizedBox(width: 10), Text('Dashboard'.tr(context))]),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, size: 20),
@@ -25,7 +26,7 @@ class DashboardScreen extends StatelessWidget {
               final ok = await state.refreshSnapshot();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(ok ? 'Snapshot aggiornato' : 'Refresh fallito'),
+                  content: Text(ok ? 'Snapshot aggiornato'.tr(context) : 'Refresh fallito'.tr(context)),
                   duration: const Duration(seconds: 2),
                 ));
               }
@@ -69,9 +70,9 @@ class DashboardScreen extends StatelessWidget {
                 _focuserCard(context, state),
               ],
             ),
-            const SectionLabel('Sequenza in corso'),
+            SectionLabel('Sequenza in corso'.tr(context)),
             _sequenceProgress(context, state),
-            const SectionLabel('Telemetria osservatorio'),
+            SectionLabel('Telemetria osservatorio'.tr(context)),
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -85,7 +86,7 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
             if (state.messages.isNotEmpty) ...[
-              const SectionLabel('Ultimi messaggi'),
+              SectionLabel('Ultimi messaggi'.tr(context)),
               ...state.messages.reversed.take(3).map((m) => _msgRow(context, m)),
             ],
           ],
@@ -176,7 +177,7 @@ class DashboardScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: T.line(c)),
         ),
-        child: Text('Nessun mount connesso ad Ekos',
+        child: Text('Nessun mount connesso ad Ekos'.tr(c),
             style: TextStyle(color: T.muted(c), fontSize: 13)),
       );
     }
@@ -220,7 +221,7 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.image_outlined, color: T.muted(c), size: 36),
                     const SizedBox(height: 6),
-                    Text('In attesa del primo scatto…', style: TextStyle(color: T.muted(c), fontSize: 12)),
+                    Text('In attesa del primo scatto…'.tr(c), style: TextStyle(color: T.muted(c), fontSize: 12)),
                   ],
                 ),
               ),
@@ -327,7 +328,7 @@ class DashboardScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Esposizione corrente', style: TextStyle(color: T.text(c), fontWeight: FontWeight.w600, fontSize: 13)),
+              Text('Esposizione corrente'.tr(c), style: TextStyle(color: T.text(c), fontWeight: FontWeight.w600, fontSize: 13)),
               Text(
                 exp?['state'] ?? '—',
                 style: TextStyle(color: exp?['state'] == 'Busy' ? T.accent(c) : T.muted(c), fontSize: 11),
@@ -343,7 +344,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            remaining == null ? 'idle' : '${remaining.toStringAsFixed(0)}s rimanenti',
+            remaining == null ? 'idle' : '${remaining.toStringAsFixed(0)}s ${'rimanenti'.tr(c)}',
             style: TextStyle(color: T.muted(c), fontSize: 11),
           ),
         ],
@@ -376,7 +377,7 @@ class DashboardScreen extends StatelessWidget {
     }
     return StatusCard(
       header: 'DOME',
-      value: dev.isEmpty ? '—' : (open ? 'Aperto' : 'Chiuso'),
+      value: dev.isEmpty ? '—' : (open ? 'Aperto'.tr(c) : 'Chiuso'.tr(c)),
       subtitle: dev.isEmpty ? 'no dome' : dev,
       badgeColor: open ? T.ok(c) : T.warn(c),
       badgeText: open ? 'open' : 'close',

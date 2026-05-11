@@ -619,19 +619,47 @@ async def ekos_capture_and_solve(
                           str(float(payload["target_ra_hours"])),
                           str(float(payload["target_dec_deg"])))
 
-    # Solver action: 0=GoTo target, 1=Sync, 2=SlewTarget, 3=Nothing
-    if payload.get("solver_action") is not None:
+    # Solver action: Ekos AlignSolverAction enum: 0=Sync, 1=Slew, 2=Nothing.
+    #
+    # IMPORTANTE: setSolverAction è dichiarato Q_NOREPLY in DBus — qdbus6 lo
+    # invia "fire and forget" e ritorna PRIMA che Ekos processi il messaggio.
+    # captureAndSolve invece è sincrono (bool reply). Se le due chiamate
+    # partono da subprocess qdbus6 separati c'è un race: a volte
+    # captureAndSolve viene processato PRIMA che m_CurrentGotoMode sia stato
+    # aggiornato → il solve completa con l'azione VECCHIA.
+    # Mitigazioni:
+    #   1) chiamiamo setSolverAction DUE volte con piccola pausa, per saturare
+    #      la coda eventi di Ekos
+    #   2) inseriamo una pausa esplicita di 250ms prima di captureAndSolve
+    #   3) logghiamo esplicitamente il valore inviato per troubleshooting
+    import asyncio as _asyncio
+    import logging as _log
+    _logger = _log.getLogger("astroarch_bridge.align")
+    solver_action = payload.get("solver_action")
+    if solver_action is not None:
+        sa = int(solver_action)
+        if sa not in (0, 1, 2):
+            raise HTTPException(status_code=400,
+                                detail=f"solver_action must be 0/1/2, got {sa}")
+        _logger.info("ekos_capture_and_solve: setSolverAction(%d) [%s]",
+                     sa, {0: "Sync", 1: "Slew", 2: "Nothing"}[sa])
         await _dbus_call(EKOS_DBUS_SERVICE, align_path,
-                          "org.kde.kstars.Ekos.Align.setSolverAction",
-                          str(int(payload["solver_action"])))
+                          "org.kde.kstars.Ekos.Align.setSolverAction", str(sa))
+        await _asyncio.sleep(0.15)
+        # Seconda chiamata per sicurezza (idempotente, costa nulla).
+        await _dbus_call(EKOS_DBUS_SERVICE, align_path,
+                          "org.kde.kstars.Ekos.Align.setSolverAction", str(sa))
+        await _asyncio.sleep(0.25)
 
     # Trigger capture & solve
+    _logger.info("ekos_capture_and_solve: triggering captureAndSolve")
     rc, raw = await _dbus_call(EKOS_DBUS_SERVICE, align_path,
                                 "org.kde.kstars.Ekos.Align.captureAndSolve")
     if rc != 0 or raw.lower() == "false":
         raise HTTPException(status_code=500,
                             detail=f"Ekos.Align.captureAndSolve failed: {raw}")
-    return {"ok": True, "started": True}
+    return {"ok": True, "started": True,
+            "solver_action_sent": solver_action}
 
 
 @router.post("/ekos_align_abort")
@@ -663,9 +691,19 @@ async def ekos_align_set(payload: dict = Body(default={})) -> dict:
                           str(int(payload["bin_index"])))
         applied.append("bin_index")
     if payload.get("solver_action") is not None:
+        # Doppia chiamata + delay: Q_NOREPLY è async, vedi nota in
+        # ekos_capture_and_solve. Garantisce che m_CurrentGotoMode sia aggiornato
+        # prima che chiunque legga lo stato successivo.
+        import asyncio as _asyncio
+        sa = int(payload["solver_action"])
+        if sa not in (0, 1, 2):
+            raise HTTPException(status_code=400,
+                                detail=f"solver_action must be 0/1/2, got {sa}")
         await _dbus_call(EKOS_DBUS_SERVICE, align_path,
-                          "org.kde.kstars.Ekos.Align.setSolverAction",
-                          str(int(payload["solver_action"])))
+                          "org.kde.kstars.Ekos.Align.setSolverAction", str(sa))
+        await _asyncio.sleep(0.10)
+        await _dbus_call(EKOS_DBUS_SERVICE, align_path,
+                          "org.kde.kstars.Ekos.Align.setSolverAction", str(sa))
         applied.append("solver_action")
     if payload.get("solver_mode") is not None:
         await _dbus_call(EKOS_DBUS_SERVICE, align_path,

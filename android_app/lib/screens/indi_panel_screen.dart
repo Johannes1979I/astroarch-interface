@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -16,11 +17,11 @@ class IndiPanelScreen extends StatelessWidget {
     final s = context.watch<AppState>();
     final devices = s.devices.toList()..sort();
     return Scaffold(
-      appBar: AppBar(title: Text('INDI Panel · ${devices.length}')),
+      appBar: AppBar(title: Text('${'INDI Panel'.tr(context)} · ${devices.length}')),
       body: devices.isEmpty
           ? Center(child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('Nessun driver INDI connesso.\nAvvia un profilo Ekos sul RPi.',
+              child: Text('Nessun driver INDI connesso.\nAvvia un profilo Ekos sul RPi.'.tr(context),
                   textAlign: TextAlign.center, style: TextStyle(color: T.muted(context))),
             ))
           : ListView.separated(
@@ -57,7 +58,7 @@ class IndiPanelScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(dev, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            Text('$propCount proprietà', style: TextStyle(color: T.muted(c), fontSize: 11)),
+                            Text('$propCount ${'proprietà'.tr(c)}', style: TextStyle(color: T.muted(c), fontSize: 11)),
                           ],
                         ),
                       ),
@@ -102,9 +103,9 @@ class _IndiDeviceScreenState extends State<IndiDeviceScreen> {
       }
       await Future.delayed(const Duration(milliseconds: 600));
       await s.refreshSnapshot();
-      if (mounted) showSnack(context, connect ? 'Connessione…' : 'Disconnesso');
+      if (mounted) showSnack(context, connect ? 'Connessione…'.tr(context) : 'Disconnesso'.tr(context));
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -131,13 +132,13 @@ class _IndiDeviceScreenState extends State<IndiDeviceScreen> {
             TextButton.icon(
               onPressed: () => _connect(true),
               icon: Icon(Icons.power_settings_new, color: T.ok(context), size: 18),
-              label: Text('CONNECT', style: TextStyle(color: T.ok(context), fontWeight: FontWeight.w700)),
+              label: Text('CONNECT'.tr(context), style: TextStyle(color: T.ok(context), fontWeight: FontWeight.w700)),
             )
           else if (isConnected == true)
             TextButton.icon(
               onPressed: () => _connect(false),
               icon: Icon(Icons.power_settings_new, color: T.muted(context), size: 18),
-              label: Text('DISCONNECT', style: TextStyle(color: T.muted(context), fontWeight: FontWeight.w600)),
+              label: Text('DISCONNECT'.tr(context), style: TextStyle(color: T.muted(context), fontWeight: FontWeight.w600)),
             ),
         ],
       ),
@@ -152,7 +153,7 @@ class _IndiDeviceScreenState extends State<IndiDeviceScreen> {
                 Icon(Icons.warning_amber, color: T.warn(context), size: 16),
                 const SizedBox(width: 8),
                 Expanded(child: Text(
-                  'Driver non connesso. Tappa CONNECT in alto per attivarlo.',
+                  'Driver non connesso. Tappa CONNECT in alto per attivarlo.'.tr(context),
                   style: TextStyle(color: T.text(context), fontSize: 12),
                 )),
               ]),
@@ -251,7 +252,7 @@ class _IndiPropertyTile extends StatelessWidget {
                 ]),
             ])
           else if (type == 'BLOB')
-            Text('BLOB · ${elements.length} stream', style: TextStyle(color: T.muted(context), fontSize: 11)),
+            Text('BLOB · ${elements.length} ${'stream'.tr(context)}', style: TextStyle(color: T.muted(context), fontSize: 11)),
         ],
       ),
     );
@@ -286,7 +287,7 @@ class _SwitchEditor extends StatelessWidget {
                 await api!.indiSet(device, name, {e['name']: !selected});
               }
             } catch (err) {
-              if (context.mounted) showSnack(context, 'Errore: $err', error: true);
+              if (context.mounted) showSnack(context, '${'Errore: '.tr(context)}$err', error: true);
             }
           },
         );
@@ -351,9 +352,9 @@ class _NumberEditorState extends State<_NumberEditor> {
                     final values = {for (final entry in _ctls.entries)
                       entry.key: double.tryParse(entry.value.text) ?? 0.0};
                     await widget.api!.indiSet(widget.device, widget.name, values);
-                    if (context.mounted) showSnack(context, 'Set');
+                    if (context.mounted) showSnack(context, 'Set'.tr(context));
                   } catch (e) {
-                    if (context.mounted) showSnack(context, 'Errore: $e', error: true);
+                    if (context.mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
                   }
                 }),
           ),
@@ -413,9 +414,9 @@ class _TextEditorState extends State<_TextEditor> {
                   try {
                     final values = {for (final entry in _ctls.entries) entry.key: entry.value.text};
                     await widget.api!.indiSet(widget.device, widget.name, values);
-                    if (context.mounted) showSnack(context, 'Set');
+                    if (context.mounted) showSnack(context, 'Set'.tr(context));
                   } catch (e) {
-                    if (context.mounted) showSnack(context, 'Errore: $e', error: true);
+                    if (context.mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
                   }
                 }),
           ),

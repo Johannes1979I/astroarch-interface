@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -49,7 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _token.text = result.token;
       _err = null;
     });
-    showSnack(context, 'QR letto: ${result.host}:${result.port}');
+    showSnack(context, '${'QR letto: '.tr(context)}${result.host}:${result.port}');
   }
 
   Future<void> _connect() async {
@@ -64,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _busy = false;
       if (!ok) {
-        _err = s.lastConnectError ?? 'Bridge non raggiungibile su ${s.baseUrl}';
+        _err = s.lastConnectError ?? '${'Bridge non raggiungibile su '.tr(context)}${s.baseUrl}';
       }
     });
   }
@@ -94,9 +95,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text.rich(
                   TextSpan(
                     children: [
-                      const TextSpan(text: 'Astroarch ', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700)),
+                      TextSpan(text: 'Astroarch '.tr(context), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700)),
                       TextSpan(
-                        text: 'Interface',
+                        text: 'Interface'.tr(context),
                         style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: T.accent(context)),
                       ),
                     ],
@@ -105,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Zarletti-Osservatorio Jupiter · v0.1',
+                  '${'Zarletti-Osservatorio Jupiter'.tr(context)} · v0.1',
                   style: TextStyle(color: T.muted(context), fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
@@ -140,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 OutlinedButton.icon(
                   onPressed: _busy ? null : _scanQr,
                   icon: Icon(Icons.qr_code_scanner, color: T.accent(context)),
-                  label: Text('SCAN QR DALLA DASHBOARD',
+                  label: Text('SCANSIONA QR DALLA DASHBOARD'.tr(context),
                       style: TextStyle(color: T.accent(context), fontWeight: FontWeight.w700, letterSpacing: .4)),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: T.accent(context).withValues(alpha: 0.6)),
@@ -156,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: _busy ? null : _connect,
                         child: _busy
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                            : const Text('CONNETTI'),
+                            : Text('CONNETTI'.tr(context)),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -164,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       flex: 1,
                       child: OutlinedButton.icon(
                         icon: Icon(Icons.medical_services, size: 16, color: T.accent2(context)),
-                        label: Text('TEST',
+                        label: Text('TEST'.tr(context),
                             style: TextStyle(color: T.accent2(context), fontWeight: FontWeight.w700)),
                         onPressed: _busy ? null : _openDiagnostics,
                         style: OutlinedButton.styleFrom(
@@ -191,14 +192,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Icon(Icons.error_outline, color: T.err(context), size: 16),
                             const SizedBox(width: 6),
-                            Text('Errore di connessione',
+                            Text('Errore di connessione'.tr(context),
                                 style: TextStyle(color: T.err(context), fontWeight: FontWeight.w700, fontSize: 12)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Text(_err!, style: TextStyle(color: T.text(context), fontSize: 11.5)),
                         const SizedBox(height: 6),
-                        Text('Tap "TEST" per diagnostica step-by-step.',
+                        Text('Tap "TEST" per diagnostica step-by-step.'.tr(context),
                             style: TextStyle(color: T.muted(context), fontSize: 10.5)),
                       ],
                     ),
@@ -219,7 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'WireGuard via Tailscale · cifrato end-to-end',
+                          'WireGuard via Tailscale · cifrato end-to-end'.tr(context),
                           style: TextStyle(color: T.accent2(context), fontSize: 11),
                         ),
                       ),
@@ -230,15 +231,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Tema: ', style: TextStyle(color: T.muted(context), fontSize: 11)),
+                    Text('Tema: '.tr(context), style: TextStyle(color: T.muted(context), fontSize: 11)),
                     ChipToggle(
-                      label: 'Pro',
+                      label: 'Pro'.tr(context),
                       selected: !state.nightMode,
                       onTap: () => state.setNight(false),
                     ),
                     const SizedBox(width: 6),
                     ChipToggle(
-                      label: 'Notte',
+                      label: 'Notte'.tr(context),
                       selected: state.nightMode,
                       onTap: () => state.setNight(true),
                     ),

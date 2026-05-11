@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -30,7 +31,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
       final j = await s.api!.schedulerJobs();
       _jobs = ((j['jobs'] as List?) ?? []).cast<Map<String, dynamic>>();
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -40,7 +41,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scheduler'),
+        title: Text('Scheduler'.tr(context)),
         actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))],
       ),
       body: _loading && _sky == null
@@ -49,14 +50,14 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
               onRefresh: _refresh,
               child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 80), children: [
                 _skyCard(),
-                const SectionLabel('Jobs pianificati'),
+                SectionLabel('Jobs pianificati'.tr(context)),
                 if (_jobs.isEmpty)
                   Padding(padding: const EdgeInsets.all(20),
-                      child: Text('Nessun job. Tap + in basso',
+                      child: Text('Nessun job. Tap + in basso'.tr(context),
                           style: TextStyle(color: T.muted(context)))),
                 for (final j in _jobs) _jobTile(j),
                 const SizedBox(height: 14),
-                PrimaryButton(label: '+ NUOVO JOB', icon: Icons.add,
+                PrimaryButton(label: '+ NUOVO JOB'.tr(context), icon: Icons.add,
                     onPressed: _addJob),
               ]),
             ),
@@ -96,9 +97,9 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
         ]),
         const SizedBox(height: 8),
         Wrap(spacing: 14, runSpacing: 4, children: [
-          _kv('Sun', sunAlt == null ? '—' : '${sunAlt.toStringAsFixed(1)}°'),
-          _kv('Moon', moonAlt == null ? '—' : '${moonAlt.toStringAsFixed(1)}°'),
-          _kv('Weather', ws ? 'safe' : 'unsafe'),
+          _kv('Sun'.tr(context), sunAlt == null ? '—' : '${sunAlt.toStringAsFixed(1)}°'),
+          _kv('Moon'.tr(context), moonAlt == null ? '—' : '${moonAlt.toStringAsFixed(1)}°'),
+          _kv('Weather'.tr(context), ws ? 'safe'.tr(context) : 'unsafe'.tr(context)),
         ]),
       ]),
     );
@@ -127,29 +128,29 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
                  'Dec ${(j['dec_deg'] as num).toStringAsFixed(1)}°',
                 style: TextStyle(color: T.muted(context), fontSize: 10, fontFamily: 'monospace')),
           if (j['start_time'] != null)
-            Text('start: ${j['start_time']}',
+            Text('${'start: '.tr(context)}${j['start_time']}',
                 style: TextStyle(color: T.muted(context), fontSize: 10)),
-          Text('alt min: ${j['min_altitude'] ?? 30}°',
+          Text('${'alt min: '.tr(context)}${j['min_altitude'] ?? 30}°',
               style: TextStyle(color: T.muted(context), fontSize: 10)),
         ])),
         IconButton(
           icon: Icon(Icons.fact_check_outlined, color: T.accent2(context), size: 18),
-          tooltip: 'Verifica condizioni',
+          tooltip: 'Verifica condizioni'.tr(context),
           onPressed: () async {
             try {
               final r = await s.api!.schedulerCheckConditions(j['id']);
               if (mounted) {
                 showDialog(context: context, builder: (c) => AlertDialog(
                   backgroundColor: T.panel(context),
-                  title: Text(r['can_run'] == true ? 'Pronto ad avviare' : 'Non avviabile ora'),
+                  title: Text(r['can_run'] == true ? 'Pronto ad avviare'.tr(context) : 'Non avviabile ora'.tr(context)),
                   content: r['can_run'] == true
-                      ? const Text('Tutte le condizioni soddisfatte.')
+                      ? Text('Tutte le condizioni soddisfatte.'.tr(context))
                       : Text((r['issues'] as List).join('\n')),
-                  actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+                  actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text('OK'.tr(context)))],
                 ));
               }
             } catch (e) {
-              if (mounted) showSnack(context, 'Errore: $e', error: true);
+              if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
             }
           },
         ),
@@ -160,7 +161,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
               await s.api!.schedulerDeleteJob(j['id']);
               _refresh();
             } catch (e) {
-              if (mounted) showSnack(context, 'Errore: $e', error: true);
+              if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
             }
           },
         ),
@@ -177,7 +178,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
       await s.api!.schedulerAddJob(result);
       _refresh();
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 }
@@ -209,7 +210,7 @@ class _AddJobScreenState extends State<_AddJobScreen> {
       _raCtl.text = (r['ra_hours'] as num).toStringAsFixed(4);
       _decCtl.text = (r['dec_deg'] as num).toStringAsFixed(4);
     } on ApiException catch (e) {
-      _resolveErr = e.status == 404 ? 'non trovato' : e.body;
+      _resolveErr = e.status == 404 ? 'non trovato'.tr(context) : e.body;
     } catch (e) {
       _resolveErr = '$e';
     } finally {
@@ -222,7 +223,7 @@ class _AddJobScreenState extends State<_AddJobScreen> {
     final dec = double.tryParse(_decCtl.text);
     final alt = int.tryParse(_altCtl.text) ?? 30;
     if (_name.text.trim().isEmpty) {
-      showSnack(context, 'Manca il nome', error: true); return;
+      showSnack(context, 'Manca il nome'.tr(context), error: true); return;
     }
     Navigator.pop(context, {
       'name': _name.text.trim(),
@@ -238,24 +239,24 @@ class _AddJobScreenState extends State<_AddJobScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nuovo job scheduler'),
+        title: Text('Nuovo job scheduler'.tr(context)),
         actions: [
           TextButton.icon(
             onPressed: _save,
             icon: Icon(Icons.check, color: T.accent(context)),
-            label: Text('SALVA',
+            label: Text('SALVA'.tr(context),
                 style: TextStyle(color: T.accent(context), fontWeight: FontWeight.w700)),
           ),
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(14), children: [
         TextField(controller: _name,
-            decoration: const InputDecoration(labelText: 'Nome job', isDense: true)),
+            decoration: InputDecoration(labelText: 'Nome job'.tr(context), isDense: true)),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: TextField(
             controller: _target,
-            decoration: const InputDecoration(labelText: 'Target (SIMBAD)',
+            decoration: InputDecoration(labelText: 'Target (SIMBAD)'.tr(context),
                 hintText: 'M 31', isDense: true),
           )),
           const SizedBox(width: 8),
@@ -263,7 +264,7 @@ class _AddJobScreenState extends State<_AddJobScreen> {
             onPressed: _resolving ? null : _resolveTarget,
             child: _resolving
                 ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                : const Text('RISOLVI'),
+                : Text('RISOLVI'.tr(context)),
           ),
         ]),
         if (_resolveErr != null) Padding(
@@ -274,16 +275,16 @@ class _AddJobScreenState extends State<_AddJobScreen> {
         Row(children: [
           Expanded(child: TextField(controller: _raCtl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'RA (h)', isDense: true))),
+              decoration: InputDecoration(labelText: 'RA (h)'.tr(context), isDense: true))),
           const SizedBox(width: 8),
           Expanded(child: TextField(controller: _decCtl,
               keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
-              decoration: const InputDecoration(labelText: 'Dec (°)', isDense: true))),
+              decoration: InputDecoration(labelText: 'Dec (°)'.tr(context), isDense: true))),
         ]),
         const SizedBox(height: 12),
         TextField(controller: _altCtl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Altitudine minima (°)', isDense: true)),
+            decoration: InputDecoration(labelText: 'Altitudine minima (°)'.tr(context), isDense: true)),
       ]),
     );
   }

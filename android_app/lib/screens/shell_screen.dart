@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
@@ -15,6 +16,7 @@ import 'logs_screen.dart';
 import 'live_view_screen.dart';
 import 'activity_log_screen.dart';
 import 'setup_screen.dart';
+import 'settings_screen.dart';
 import 'analyze_screen.dart';
 import 'scheduler_screen.dart';
 
@@ -55,17 +57,22 @@ class _ShellScreenState extends State<ShellScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _idx,
         onDestinationSelected: (i) => setState(() => _idx = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard), label: 'Dash'),
-          NavigationDestination(icon: Icon(Icons.adjust_outlined),
-              selectedIcon: Icon(Icons.adjust), label: 'Mount'),
-          NavigationDestination(icon: Icon(Icons.gps_fixed_outlined),
-              selectedIcon: Icon(Icons.gps_fixed), label: 'Align'),
-          NavigationDestination(icon: Icon(Icons.camera_alt_outlined),
-              selectedIcon: Icon(Icons.camera_alt), label: 'Capture'),
-          NavigationDestination(icon: Icon(Icons.center_focus_strong_outlined),
-              selectedIcon: Icon(Icons.center_focus_strong), label: 'Guide'),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.dashboard_outlined),
+              selectedIcon: const Icon(Icons.dashboard),
+              label: 'Dash'.tr(context)),
+          NavigationDestination(icon: const Icon(Icons.adjust_outlined),
+              selectedIcon: const Icon(Icons.adjust),
+              label: 'Mount'.tr(context)),
+          NavigationDestination(icon: const Icon(Icons.gps_fixed_outlined),
+              selectedIcon: const Icon(Icons.gps_fixed),
+              label: 'Align'.tr(context)),
+          NavigationDestination(icon: const Icon(Icons.camera_alt_outlined),
+              selectedIcon: const Icon(Icons.camera_alt),
+              label: 'Capture'.tr(context)),
+          NavigationDestination(icon: const Icon(Icons.center_focus_strong_outlined),
+              selectedIcon: const Icon(Icons.center_focus_strong),
+              label: 'Guide'.tr(context)),
         ],
       ),
     );
@@ -96,62 +103,62 @@ class _AppDrawer extends StatelessWidget {
                 style: TextStyle(color: T.muted(context), fontSize: 11),
               ),
             ),
-            _section(context, 'Connessione'),
+            _section(context, 'Connessione'.tr(context)),
             _statusTile(context, 'INDI', state.indiConn),
             _statusTile(context, 'PHD2', state.phd2Conn),
-            _statusTile(context, 'WS state', state.wsStateLabel),
-            _statusTile(context, 'WS frames', state.wsFramesLabel),
+            _statusTile(context, 'WS state'.tr(context), state.wsStateLabel),
+            _statusTile(context, 'WS frames'.tr(context), state.wsFramesLabel),
             const SizedBox(height: 8),
-            _section(context, 'Moduli'),
-            _navTile(context, Icons.dashboard, 'Dashboard', () => Navigator.pop(context)),
-            _navTile(context, Icons.center_focus_strong, 'Live View', () {
+            _section(context, 'Moduli'.tr(context)),
+            _navTile(context, Icons.dashboard, 'Dashboard'.tr(context), () => Navigator.pop(context)),
+            _navTile(context, Icons.center_focus_strong, 'Live View'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveViewScreen()));
             }),
-            _navTile(context, Icons.tune, 'Focus', () {
+            _navTile(context, Icons.tune, 'Focus'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const FocusScreen()));
             }),
-            _navTile(context, Icons.cloud_outlined, 'Observatory', () {
+            _navTile(context, Icons.cloud_outlined, 'Observatory'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ObservatoryScreen()));
             }),
-            _navTile(context, Icons.calendar_month, 'Scheduler', () {
+            _navTile(context, Icons.calendar_month, 'Scheduler'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SchedulerScreen()));
             }),
-            _navTile(context, Icons.bookmarks_outlined, 'Setup / Profili', () {
+            _navTile(context, Icons.bookmarks_outlined, 'Setup / Profili'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen()));
             }),
-            _navTile(context, Icons.analytics_outlined, 'Analyze', () {
+            _navTile(context, Icons.analytics_outlined, 'Analyze'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const AnalyzeScreen()));
             }),
             const SizedBox(height: 8),
-            _section(context, 'Sistema'),
-            _navTile(context, Icons.settings_input_component, 'INDI Panel', () {
+            _section(context, 'Sistema'.tr(context)),
+            _navTile(context, Icons.settings_input_component, 'INDI Panel'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const IndiPanelScreen()));
             }),
-            _navTile(context, Icons.folder_outlined, 'Files', () {
+            _navTile(context, Icons.folder_outlined, 'Files'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const FilesScreen()));
             }),
-            _navTile(context, Icons.terminal, 'INDI Logs', () {
+            _navTile(context, Icons.terminal, 'INDI Logs'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const LogsScreen()));
             }),
-            _navTile(context, Icons.history, 'Activity Log (chiamate API)', () {
+            _navTile(context, Icons.history, 'Activity Log (chiamate API)'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ActivityLogScreen()));
             }),
-            _navTile(context, state.nightMode ? Icons.wb_sunny : Icons.nightlight_round,
-                state.nightMode ? 'Tema Pro' : 'Tema Notte', () {
-              state.setNight(!state.nightMode);
+            _navTile(context, Icons.settings, 'Impostazioni'.tr(context), () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
             }),
             const Divider(),
-            _navTile(context, Icons.power_settings_new, 'Disconnetti', () async {
+            _navTile(context, Icons.power_settings_new, 'Disconnetti'.tr(context), () async {
               Navigator.pop(context);
               await state.disconnect();
             }, danger: true),

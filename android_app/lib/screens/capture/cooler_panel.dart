@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../api/api_client.dart';
+import '../../i18n/strings.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
@@ -63,13 +64,13 @@ class _CoolerPanelState extends State<CoolerPanel> {
       }
       if (mounted) {
         showSnack(context, newState
-            ? 'Cooler ON · target ${target.toStringAsFixed(1)}°C'
-            : 'Cooler OFF');
+            ? '${'Cooler ON · target '.tr(context)}${target.toStringAsFixed(1)}°C'
+            : 'Cooler OFF'.tr(context));
       }
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -84,10 +85,10 @@ class _CoolerPanelState extends State<CoolerPanel> {
       await Future.delayed(const Duration(milliseconds: 400));
       await s.refreshSnapshot();
       if (mounted) {
-        showSnack(context, 'Target ${t.toStringAsFixed(1)}°C inviato (cooling ~3°C/min)');
+        showSnack(context, '${'Target '.tr(context)}${t.toStringAsFixed(1)}${'°C inviato (cooling ~3°C/min)'.tr(context)}');
       }
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -97,25 +98,25 @@ class _CoolerPanelState extends State<CoolerPanel> {
     if (_busy || s.api == null) return;
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       backgroundColor: T.panel(context),
-      title: const Text('Riconnetti driver?'),
-      content: Text('Disconnette/riconnette "${widget.camera}". Risolve quasi tutti i blocchi del cooler.'),
+      title: Text('Riconnetti driver?'.tr(context)),
+      content: Text('${'Disconnette/riconnette "'.tr(context)}${widget.camera}${'". Risolve quasi tutti i blocchi del cooler.'.tr(context)}'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('ANNULLA')),
-        ElevatedButton(onPressed: () => Navigator.pop(c, true), child: const Text('RICONNETTI')),
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text('ANNULLA'.tr(context))),
+        ElevatedButton(onPressed: () => Navigator.pop(c, true), child: Text('RICONNETTI'.tr(context))),
       ],
     ));
     if (ok != true) return;
     setState(() => _busy = true);
     try {
-      showSnack(context, 'Disconnetto…');
+      showSnack(context, 'Disconnetto…'.tr(context));
       await s.api!.indiDisconnect(widget.camera);
       await Future.delayed(const Duration(seconds: 2));
       await s.api!.indiConnect(widget.camera);
       await Future.delayed(const Duration(seconds: 3));
       await s.refreshSnapshot();
-      if (mounted) showSnack(context, 'Driver riconnesso');
+      if (mounted) showSnack(context, 'Driver riconnesso'.tr(context));
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -135,13 +136,13 @@ class _CoolerPanelState extends State<CoolerPanel> {
         : (tempState == 'Busy' ? T.warn(context) : T.ok(context));
     String label;
     if (!on) {
-      label = 'cooler off';
+      label = 'cooler off'.tr(context);
     } else if (temp == null) {
-      label = 'cooler on';
+      label = 'cooler on'.tr(context);
     } else if ((temp - target).abs() < 0.5) {
-      label = 'target raggiunto';
+      label = 'target raggiunto'.tr(context);
     } else {
-      label = 'cooling… target ${target.toStringAsFixed(1)}°';
+      label = '${'cooling… target '.tr(context)}${target.toStringAsFixed(1)}°';
     }
 
     return Container(
@@ -157,7 +158,7 @@ class _CoolerPanelState extends State<CoolerPanel> {
           Row(children: [
             Icon(Icons.ac_unit, size: 14, color: T.muted(context)),
             const SizedBox(width: 6),
-            Text('COOLER', style: TextStyle(
+            Text('COOLER'.tr(context), style: TextStyle(
                 color: T.muted(context), fontSize: 10.5, letterSpacing: 1.4)),
             const Spacer(),
             Text(label, style: TextStyle(color: T.muted(context), fontSize: 11)),
@@ -173,7 +174,7 @@ class _CoolerPanelState extends State<CoolerPanel> {
                   Row(children: [
                     Icon(Icons.bolt, size: 12, color: T.muted(context)),
                     const SizedBox(width: 3),
-                    Text(power == null ? 'POWER —' : 'POWER ${power.toStringAsFixed(0)}%',
+                    Text(power == null ? '${'POWER'.tr(context)} —' : '${'POWER'.tr(context)} ${power.toStringAsFixed(0)}%',
                         style: TextStyle(color: T.muted(context), fontSize: 11)),
                   ]),
                 ],
@@ -203,7 +204,7 @@ class _CoolerPanelState extends State<CoolerPanel> {
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9\.\-]'))],
                 style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
-                  labelText: 'TARGET T (°C)',
+                  labelText: 'TARGET T (°C)'.tr(context),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 ),
@@ -214,7 +215,7 @@ class _CoolerPanelState extends State<CoolerPanel> {
               height: 44,
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.thermostat, size: 16),
-                label: const Text('IMPOSTA'),
+                label: Text('IMPOSTA'.tr(context)),
                 onPressed: _busy ? null : () => _setTarget(s),
               ),
             ),
@@ -233,13 +234,13 @@ class _CoolerPanelState extends State<CoolerPanel> {
                 Icon(Icons.warning_amber, color: T.warn(context), size: 14),
                 const SizedBox(width: 6),
                 Expanded(child: Text(
-                  'Cooler ON ma POWER 0%. Tap "Riconnetti driver" se persiste.',
+                  'Cooler ON ma POWER 0%. Tap "Riconnetti driver" se persiste.'.tr(context),
                   style: TextStyle(color: T.text(context), fontSize: 11),
                 )),
               ]),
             ),
           GhostButton(
-            label: 'Riconnetti driver',
+            label: 'Riconnetti driver'.tr(context),
             icon: Icons.refresh,
             small: true,
             onPressed: _busy ? null : () => _reconnect(s),

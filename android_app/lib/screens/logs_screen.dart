@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -13,10 +14,10 @@ class LogsScreen extends StatelessWidget {
     final messages = s.messages.reversed.toList();
     return Scaffold(
       appBar: AppBar(
-        title: const Row(children: [LiveDot(), SizedBox(width: 10), Text('Logs')]),
+        title: Row(children: [const LiveDot(), const SizedBox(width: 10), Text('Logs'.tr(context))]),
       ),
       body: messages.isEmpty
-          ? Center(child: Text('Nessun messaggio', style: TextStyle(color: T.muted(context))))
+          ? Center(child: Text('Nessun messaggio'.tr(context), style: TextStyle(color: T.muted(context))))
           : Container(
               color: Colors.black,
               child: ListView.builder(

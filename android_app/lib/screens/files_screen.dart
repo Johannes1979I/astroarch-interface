@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -33,7 +34,7 @@ class _FilesScreenState extends State<FilesScreen> {
       _data = await s.api!.filesRecent(limit: 100);
       _diskUsage = await s.api!.filesDiskUsage();
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -74,17 +75,17 @@ class _FilesScreenState extends State<FilesScreen> {
     final n = _selected.length;
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       backgroundColor: T.panel(context),
-      title: Text('Cancella $n file?'),
+      title: Text('${'Cancella '.tr(context)}$n ${'file?'.tr(context)}'),
       content: Text(n == 1
-          ? 'Il file FITS verrà cancellato definitivamente dal Raspberry Pi.\n\nQuesta azione non è reversibile.'
-          : 'I $n file FITS verranno cancellati definitivamente dal Raspberry Pi.\n\nQuesta azione non è reversibile.'),
+          ? 'Il file FITS verrà cancellato definitivamente dal Raspberry Pi.\n\nQuesta azione non è reversibile.'.tr(context)
+          : '${'I '.tr(context)}$n ${'file FITS verranno cancellati definitivamente dal Raspberry Pi.\n\nQuesta azione non è reversibile.'.tr(context)}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false),
-            child: const Text('ANNULLA')),
+            child: Text('ANNULLA'.tr(context))),
         ElevatedButton(
           onPressed: () => Navigator.pop(c, true),
           style: ElevatedButton.styleFrom(backgroundColor: T.err(context)),
-          child: const Text('CANCELLA', style: TextStyle(color: Colors.white)),
+          child: Text('CANCELLA'.tr(context), style: const TextStyle(color: Colors.white)),
         ),
       ],
     ));
@@ -93,13 +94,12 @@ class _FilesScreenState extends State<FilesScreen> {
       final r = await s.api!.filesDeleteMany(_selected.toList());
       final freed = ((r['freed_bytes'] as num?)?.toDouble() ?? 0) / 1024 / 1024;
       if (mounted) {
-        showSnack(context, 'Cancellati ${r['deleted_count']} file '
-            '(liberati ${freed.toStringAsFixed(1)} MB)');
+        showSnack(context, '${'Cancellati '.tr(context)}${r['deleted_count']} ${'file (liberati '.tr(context)}${freed.toStringAsFixed(1)} MB)');
       }
       _exitSelection();
       _refresh();
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -108,25 +108,25 @@ class _FilesScreenState extends State<FilesScreen> {
     if (s.api == null) return;
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       backgroundColor: T.panel(context),
-      title: const Text('Cancella file?'),
-      content: Text('$name sarà cancellato definitivamente.'),
+      title: Text('Cancella file?'.tr(context)),
+      content: Text('$name ${'sarà cancellato definitivamente.'.tr(context)}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false),
-            child: const Text('ANNULLA')),
+            child: Text('ANNULLA'.tr(context))),
         ElevatedButton(
           onPressed: () => Navigator.pop(c, true),
           style: ElevatedButton.styleFrom(backgroundColor: T.err(context)),
-          child: const Text('CANCELLA', style: TextStyle(color: Colors.white)),
+          child: Text('CANCELLA'.tr(context), style: const TextStyle(color: Colors.white)),
         ),
       ],
     ));
     if (ok != true) return;
     try {
       await s.api!.fileDelete(path);
-      if (mounted) showSnack(context, 'Cancellato $name');
+      if (mounted) showSnack(context, '${'Cancellato '.tr(context)}$name');
       _refresh();
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -141,18 +141,18 @@ class _FilesScreenState extends State<FilesScreen> {
                 icon: const Icon(Icons.menu),
                 onPressed: () => Scaffold.of(c).openDrawer())),
         title: _selectionMode
-            ? Text('${_selected.length} selezionati')
-            : const Text('Files'),
+            ? Text('${_selected.length} ${'selezionati'.tr(context)}')
+            : Text('Files'.tr(context)),
         actions: _selectionMode
             ? [
                 IconButton(
                   icon: const Icon(Icons.select_all),
-                  tooltip: 'Seleziona tutti',
+                  tooltip: 'Seleziona tutti'.tr(context),
                   onPressed: _selectAll,
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_forever, color: T.err(context)),
-                  tooltip: 'Cancella selezionati',
+                  tooltip: 'Cancella selezionati'.tr(context),
                   onPressed: _deleteSelected,
                 ),
               ]
@@ -168,7 +168,7 @@ class _FilesScreenState extends State<FilesScreen> {
                   ? ListView(children: [
                       _diskInfoCard(),
                       Padding(padding: const EdgeInsets.all(40),
-                          child: Text('Nessun FITS in ${_data?['base'] ?? 'dir'}',
+                          child: Text('${'Nessun FITS in '.tr(context)}${_data?['base'] ?? 'dir'}',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: T.muted(context)))),
                     ])
@@ -222,7 +222,7 @@ class _FilesScreenState extends State<FilesScreen> {
         Row(children: [
           Icon(Icons.sd_card, size: 14, color: T.muted(context)),
           const SizedBox(width: 6),
-          Text('STORAGE RPi',
+          Text('STORAGE RPi'.tr(context),
               style: TextStyle(color: T.muted(context),
                   fontSize: 10.5, letterSpacing: 1.4, fontWeight: FontWeight.w700)),
           const Spacer(),
@@ -244,7 +244,7 @@ class _FilesScreenState extends State<FilesScreen> {
         const SizedBox(height: 4),
         Text('${(used / 1024 / 1024 / 1024).toStringAsFixed(1)} / '
              '${(total / 1024 / 1024 / 1024).toStringAsFixed(1)} GB · '
-             'libero ${(free / 1024 / 1024 / 1024).toStringAsFixed(1)} GB',
+             '${'libero '.tr(context)}${(free / 1024 / 1024 / 1024).toStringAsFixed(1)} GB',
             style: TextStyle(color: T.muted(context),
                 fontFamily: 'monospace', fontSize: 10)),
       ]),
@@ -372,14 +372,14 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     final s = context.read<AppState>();
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       backgroundColor: T.panel(context),
-      title: const Text('Cancella file?'),
-      content: Text('${widget.name} sarà cancellato definitivamente dal RPi.'),
+      title: Text('Cancella file?'.tr(context)),
+      content: Text('${widget.name} ${'sarà cancellato definitivamente dal RPi.'.tr(context)}'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('ANNULLA')),
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text('ANNULLA'.tr(context))),
         ElevatedButton(
           onPressed: () => Navigator.pop(c, true),
           style: ElevatedButton.styleFrom(backgroundColor: T.err(context)),
-          child: const Text('CANCELLA', style: TextStyle(color: Colors.white)),
+          child: Text('CANCELLA'.tr(context), style: const TextStyle(color: Colors.white)),
         ),
       ],
     ));
@@ -387,11 +387,11 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     try {
       await s.api!.fileDelete(widget.path);
       if (mounted) {
-        showSnack(context, 'Cancellato');
+        showSnack(context, 'Cancellato'.tr(context));
         Navigator.pop(context, true); // ritorna true per refresh
       }
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 

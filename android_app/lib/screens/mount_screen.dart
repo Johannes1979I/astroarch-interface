@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -31,9 +32,9 @@ class _MountScreenState extends State<MountScreen> {
       await fn();
       if (mounted) showSnack(context, okMsg);
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -49,7 +50,7 @@ class _MountScreenState extends State<MountScreen> {
     try {
       _searchResult = await s.api!.simbadSearch(name);
     } on ApiException catch (e) {
-      _searchErr = e.status == 404 ? 'Oggetto non trovato' : 'Errore: ${e.body}';
+      _searchErr = e.status == 404 ? 'Oggetto non trovato'.tr(context) : '${'Errore: '.tr(context)}${e.body}';
     } catch (e) {
       _searchErr = '$e';
     } finally {
@@ -65,7 +66,7 @@ class _MountScreenState extends State<MountScreen> {
     final dec = (r['dec_deg'] as num).toDouble();
     await _safeCall(
       () => s.api!.mountGoto(ra, dec, action: action),
-      action == 'sync' ? 'Sync su ${r['name']}' : 'GoTo ${r['name']}',
+      action == 'sync' ? '${'Sync su '.tr(context)}${r['name']}' : '${'GoTo '.tr(context)}${r['name']}',
     );
   }
 
@@ -104,12 +105,12 @@ class _MountScreenState extends State<MountScreen> {
         leading: IconButton(
             icon: const Icon(Icons.menu),
             onPressed: openShellDrawer),
-        title: Text(m == null ? 'Mount' : 'Mount · $m'),
+        title: Text(m == null ? 'Mount'.tr(context) : '${'Mount'.tr(context)} · $m'),
       ),
       body: m == null
           ? Center(child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('Nessun mount connesso ad Ekos.',
+              child: Text('Nessun mount connesso ad Ekos.'.tr(context),
                   textAlign: TextAlign.center, style: TextStyle(color: T.muted(context))),
             ))
           : ListView(
@@ -122,7 +123,7 @@ class _MountScreenState extends State<MountScreen> {
                   const SizedBox(width: 8),
                   Expanded(child: _badgeBox('STATE', coord?['state'] ?? '—')),
                 ]),
-                const SectionLabel('Cerca oggetto (SIMBAD)'),
+                SectionLabel('Cerca oggetto (SIMBAD)'.tr(context)),
                 _searchBar(),
                 if (_searchResult != null) _searchResultCard(),
                 if (_searchErr != null)
@@ -131,9 +132,9 @@ class _MountScreenState extends State<MountScreen> {
                     child: Text(_searchErr!,
                         style: TextStyle(color: T.err(context), fontSize: 12)),
                   ),
-                const SectionLabel('GoTo manuale RA/Dec'),
+                SectionLabel('GoTo manuale RA/Dec'.tr(context)),
                 _gotoForm(),
-                const SectionLabel('Slew manuale'),
+                SectionLabel('Slew manuale'.tr(context)),
                 Center(child: _joypad()),
                 const SizedBox(height: 8),
                 if (rates != null) Center(child: _rateChips(rates)),
@@ -143,7 +144,7 @@ class _MountScreenState extends State<MountScreen> {
                     label: isParked ? 'UNPARK' : 'PARK',
                     onPressed: () => _safeCall(
                       () => isParked ? s.api!.mountUnpark() : s.api!.mountPark(),
-                      isParked ? 'Unparking…' : 'Parking…'),
+                      isParked ? 'Unparking…'.tr(context) : 'Parking…'.tr(context)),
                   )),
                   const SizedBox(width: 6),
                   Expanded(child: GhostButton(label: 'SYNC', onPressed: _syncToCurrent)),
@@ -151,24 +152,24 @@ class _MountScreenState extends State<MountScreen> {
                   Expanded(child: GhostButton(label: 'STOP', danger: true,
                     onPressed: () => _safeCall(() => s.api!.mountAbort(), 'Abort'))),
                 ]),
-                const SectionLabel('Tracking'),
+                SectionLabel('Tracking'.tr(context)),
                 Wrap(spacing: 6, runSpacing: 6, children: [
-                  ChipToggle(label: 'Sidereal',
+                  ChipToggle(label: 'Sidereal'.tr(context),
                     selected: selectedMode == 'TRACK_SIDEREAL' && isTracking,
                     onTap: () => _safeCall(
-                      () => s.api!.mountTrack(on: true, mode: 'TRACK_SIDEREAL'), 'Sidereal')),
-                  ChipToggle(label: 'Lunar',
+                      () => s.api!.mountTrack(on: true, mode: 'TRACK_SIDEREAL'), 'Sidereal'.tr(context))),
+                  ChipToggle(label: 'Lunar'.tr(context),
                     selected: selectedMode == 'TRACK_LUNAR' && isTracking,
                     onTap: () => _safeCall(
-                      () => s.api!.mountTrack(on: true, mode: 'TRACK_LUNAR'), 'Lunar')),
-                  ChipToggle(label: 'Solar',
+                      () => s.api!.mountTrack(on: true, mode: 'TRACK_LUNAR'), 'Lunar'.tr(context))),
+                  ChipToggle(label: 'Solar'.tr(context),
                     selected: selectedMode == 'TRACK_SOLAR' && isTracking,
                     onTap: () => _safeCall(
-                      () => s.api!.mountTrack(on: true, mode: 'TRACK_SOLAR'), 'Solar')),
-                  ChipToggle(label: 'Off',
+                      () => s.api!.mountTrack(on: true, mode: 'TRACK_SOLAR'), 'Solar'.tr(context))),
+                  ChipToggle(label: 'Off'.tr(context),
                     selected: !isTracking,
                     onTap: () => _safeCall(
-                      () => s.api!.mountTrack(on: false), 'Tracking off')),
+                      () => s.api!.mountTrack(on: false), 'Tracking off'.tr(context))),
                 ]),
               ],
             ),
@@ -182,7 +183,7 @@ class _MountScreenState extends State<MountScreen> {
           controller: _searchCtl,
           onSubmitted: (_) => _search(),
           decoration: InputDecoration(
-            hintText: 'M 31, NGC 7000, Vega…',
+            hintText: 'M 31, NGC 7000, Vega…'.tr(context),
             prefixIcon: const Icon(Icons.search, size: 18),
             isDense: true,
           ),
@@ -195,7 +196,7 @@ class _MountScreenState extends State<MountScreen> {
           onPressed: _searching ? null : _search,
           child: _searching
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-              : const Text('CERCA'),
+              : Text('CERCA'.tr(context)),
         ),
       ),
     ]);
@@ -284,13 +285,13 @@ class _MountScreenState extends State<MountScreen> {
         Expanded(child: TextField(
           controller: raCtl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'RA (h)', hintText: '0.7178', isDense: true),
+          decoration: InputDecoration(labelText: 'RA (h)'.tr(context), hintText: '0.7178', isDense: true),
         )),
         const SizedBox(width: 8),
         Expanded(child: TextField(
           controller: decCtl,
           keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
-          decoration: const InputDecoration(labelText: 'Dec (°)', hintText: '+41.269', isDense: true),
+          decoration: InputDecoration(labelText: 'Dec (°)'.tr(context), hintText: '+41.269', isDense: true),
         )),
       ]),
       const SizedBox(height: 8),
@@ -308,7 +309,7 @@ class _MountScreenState extends State<MountScreen> {
     final ra = double.tryParse(raT);
     final dec = double.tryParse(decT);
     if (ra == null || dec == null) {
-      showSnack(context, 'RA/Dec non valido', error: true);
+      showSnack(context, 'RA/Dec non valido'.tr(context), error: true);
       return;
     }
     final s = context.read<AppState>();

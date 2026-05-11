@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../i18n/strings.dart';
 import '../theme/app_theme.dart';
 
 /// Risultato dello scan QR — dati di connessione.
@@ -76,7 +77,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
         Navigator.pop(context, cfg);
         return;
       }
-      setState(() => _err = 'QR non valido: ${raw.length > 80 ? "${raw.substring(0, 80)}…" : raw}');
+      setState(() => _err = '${'QR non valido: '.tr(context)}${raw.length > 80 ? "${raw.substring(0, 80)}…" : raw}');
     }
   }
 
@@ -85,7 +86,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scansiona QR'),
+        title: Text('Scansiona QR'.tr(context)),
         backgroundColor: Colors.black,
         actions: [
           IconButton(
@@ -127,9 +128,9 @@ class _QrScanScreenState extends State<QrScanScreen> {
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      'Inquadra il QR mostrato dalla dashboard sul desktop di AstroArch.',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    child: Text(
+                      'Inquadra il QR mostrato dalla dashboard sul desktop di AstroArch.'.tr(context),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
                   ),

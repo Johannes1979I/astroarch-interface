@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -27,7 +28,7 @@ class _SetupScreenState extends State<SetupScreen> {
       _profiles = await s.api!.setupProfiles();
       _drivers = await s.api!.setupActiveDrivers();
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -44,7 +45,7 @@ class _SetupScreenState extends State<SetupScreen> {
       await s.refreshSnapshot();
       _refresh();
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -55,7 +56,7 @@ class _SetupScreenState extends State<SetupScreen> {
     final drivers = (_drivers?['drivers'] as List? ?? []);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Setup · Profili'),
+        title: Text('Setup · Profili'.tr(context)),
         actions: [IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))],
       ),
       body: _loading && _profiles == null
@@ -63,12 +64,11 @@ class _SetupScreenState extends State<SetupScreen> {
           : RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 80), children: [
-                const SectionLabel('Profili Ekos disponibili'),
+                SectionLabel('Profili Ekos disponibili'.tr(context)),
                 if (profiles.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text('Nessun profilo letto da Ekos.\n'
-                        'Lo switch profili richiede DBus Ekos (avvio futuro).',
+                    child: Text('Nessun profilo letto da Ekos.\nLo switch profili richiede DBus Ekos (avvio futuro).'.tr(context),
                         style: TextStyle(color: T.muted(context), fontSize: 12)),
                   )
                 else for (final p in profiles)
@@ -86,11 +86,11 @@ class _SetupScreenState extends State<SetupScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w600)),
                     ]),
                   ),
-                const SectionLabel('Driver INDI attivi (toggle)'),
+                SectionLabel('Driver INDI attivi (toggle)'.tr(context)),
                 if (drivers.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text('Nessun driver caricato',
+                    child: Text('Nessun driver caricato'.tr(context),
                         style: TextStyle(color: T.muted(context))),
                   )
                 else for (final d in drivers)
@@ -118,7 +118,7 @@ class _SetupScreenState extends State<SetupScreen> {
         Expanded(child: Text(d['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
         TextButton(
           onPressed: () => _toggleDriver(s, d['name'], connected),
-          child: Text(connected ? 'DISCONNECT' : 'CONNECT',
+          child: Text(connected ? 'DISCONNECT'.tr(context) : 'CONNECT'.tr(context),
               style: TextStyle(color: connected ? T.muted(context) : T.ok(context),
                   fontWeight: FontWeight.w700, fontSize: 11)),
         ),

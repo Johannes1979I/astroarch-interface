@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../state/capture_job.dart';
 import '../theme/app_theme.dart';
@@ -51,7 +52,7 @@ class _ObservationScreenState extends State<ObservationScreen> {
     final s = context.read<AppState>();
     if (s.api == null) return;
     if (_targetCtl.text.trim().isEmpty) {
-      showSnack(context, 'Target richiesto', error: true);
+      showSnack(context, 'Target richiesto'.tr(context), error: true);
       return;
     }
     try {
@@ -70,9 +71,9 @@ class _ObservationScreenState extends State<ObservationScreen> {
       _pollTimer?.cancel();
       _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -94,9 +95,9 @@ class _ObservationScreenState extends State<ObservationScreen> {
     final s = context.read<AppState>();
     try {
       await s.api!.observationAbort(_runId!);
-      if (mounted) showSnack(context, 'Abort richiesto');
+      if (mounted) showSnack(context, 'Abort richiesto'.tr(context));
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -108,9 +109,9 @@ class _ObservationScreenState extends State<ObservationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Osservazione completa')),
+      appBar: AppBar(title: Text('Osservazione completa'.tr(context))),
       body: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 80), children: [
-        const SectionLabel('Target'),
+        SectionLabel('Target'.tr(context)),
         Row(children: [
           Expanded(child: TextField(
             controller: _targetCtl,
@@ -122,65 +123,65 @@ class _ObservationScreenState extends State<ObservationScreen> {
             ),
           )),
         ]),
-        const SectionLabel('Pre-flight checks'),
+        SectionLabel('Pre-flight checks'.tr(context)),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Plate solve & sync mount'),
-          subtitle: Text('Cattura un frame, risolve, sincronizza la mount',
+          title: Text('Plate solve & sync mount'.tr(context)),
+          subtitle: Text('Cattura un frame, risolve, sincronizza la mount'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 11)),
           value: _doPlateSolve,
           onChanged: _running ? null : (v) => setState(() => _doPlateSolve = v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Autofocus'),
-          subtitle: Text('Esegui autofocus iterativo prima della cattura',
+          title: Text('Autofocus'.tr(context)),
+          subtitle: Text('Esegui autofocus iterativo prima della cattura'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 11)),
           value: _doAutofocus,
           onChanged: _running ? null : (v) => setState(() => _doAutofocus = v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Calibrate PHD2'),
-          subtitle: Text('Forza nuova calibrazione (~2 min)',
+          title: Text('Calibrate PHD2'.tr(context)),
+          subtitle: Text('Forza nuova calibrazione (~2 min)'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 11)),
           value: _doGuideCal,
           onChanged: _running ? null : (v) => setState(() => _doGuideCal = v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Avvia guiding PHD2'),
-          subtitle: Text('Aspetta settle prima di catturare',
+          title: Text('Avvia guiding PHD2'.tr(context)),
+          subtitle: Text('Aspetta settle prima di catturare'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 11)),
           value: _doGuideStart,
           onChanged: _running ? null : (v) => setState(() => _doGuideStart = v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Usa Ekos Capture (raccomandato)'),
-          subtitle: Text('I job appaiono nella UI Ekos. Off = comando diretto INDI.',
+          title: Text('Usa Ekos Capture (raccomandato)'.tr(context)),
+          subtitle: Text('I job appaiono nella UI Ekos. Off = comando diretto INDI.'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 11)),
           value: _useEkos,
           onChanged: _running ? null : (v) => setState(() => _useEkos = v),
         ),
         const SizedBox(height: 8),
-        Text('Sequenza: ${widget.jobs.length} job',
+        Text('${'Sequenza: '.tr(context)}${widget.jobs.length} job',
             style: TextStyle(color: T.muted(context), fontSize: 11)),
         const SizedBox(height: 14),
         Row(children: [
           Expanded(child: PrimaryButton(
-            label: _running ? 'IN CORSO…' : 'AVVIA OSSERVAZIONE',
+            label: _running ? 'IN CORSO…'.tr(context) : 'AVVIA OSSERVAZIONE'.tr(context),
             icon: Icons.play_arrow,
             onPressed: _running ? null : _start,
           )),
           const SizedBox(width: 8),
           Expanded(child: GhostButton(
-            label: 'ABORT', icon: Icons.stop, danger: true,
+            label: 'ABORT'.tr(context), icon: Icons.stop, danger: true,
             onPressed: _running ? _abort : null,
           )),
         ]),
         if (_runStatus != null) ...[
-          const SectionLabel('Pipeline'),
+          SectionLabel('Pipeline'.tr(context)),
           _phasesTimeline(),
         ],
       ]),

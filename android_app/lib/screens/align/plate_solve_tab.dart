@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../api/api_client.dart';
+import '../../i18n/strings.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
@@ -46,7 +47,14 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
   @override
   void initState() {
     super.initState();
-    _loadPrefs();
+    _loadPrefs().then((_) {
+      // Sincronizza subito l'azione selezionata con Ekos all'apertura della
+      // tab. Così m_CurrentGotoMode è già allineato anche se l'utente non
+      // tocca i chip prima di "Acquisisci e Risolvi".
+      if (!mounted) return;
+      final s = context.read<AppState>();
+      _pushActionToEkos(s, _solverAction);
+    });
     _startPolling();
   }
 
@@ -129,12 +137,12 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         gain: gain,
       );
       if (mounted) {
-        showSnack(context, 'Avviato in Ekos · ${exp ?? "?"}s · bin ${_binIndex+1}×${_binIndex+1} · gain ${gain?.toInt() ?? "auto"}');
+        showSnack(context, '${'Avviato in Ekos · '.tr(context)}${exp ?? "?"}s · bin ${_binIndex+1}×${_binIndex+1} · gain ${gain?.toInt() ?? "auto"}');
       }
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -143,9 +151,9 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
   Future<void> _abort(AppState s) async {
     try {
       await s.api!.alignEkosAbort();
-      if (mounted) showSnack(context, 'Abort inviato');
+      if (mounted) showSnack(context, 'Abort inviato'.tr(context));
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -194,7 +202,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         const SizedBox(height: 8),
         ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          title: Text('Avanzate · solver mode, optical train, log',
+          title: Text('Avanzate · solver mode, optical train, log'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 12)),
           collapsedBackgroundColor: T.panel(context),
           backgroundColor: T.panel(context),
@@ -226,29 +234,29 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     // anche se Ekos Align ha già status=complete.
     if (mountSlewing) {
       statusColor = T.accent(context); statusIcon = Icons.sync;
-      statusLabel = 'SLEW TO TARGET…';
+      statusLabel = 'SLEW TO TARGET…'.tr(context);
     } else {
       switch (st) {
         case 'complete':
           statusColor = T.ok(context); statusIcon = Icons.check_circle;
-          statusLabel = 'COMPLETE'; break;
+          statusLabel = 'COMPLETE'.tr(context); break;
         case 'failed':
           statusColor = T.err(context); statusIcon = Icons.error;
-          statusLabel = 'FAILED'; break;
+          statusLabel = 'FAILED'.tr(context); break;
         case 'aborted':
           statusColor = T.warn(context); statusIcon = Icons.cancel;
-          statusLabel = 'ABORTED'; break;
+          statusLabel = 'ABORTED'.tr(context); break;
         case 'progress':
         case 'syncing':
         case 'slewing':
           statusColor = T.accent(context); statusIcon = Icons.sync;
-          statusLabel = st.toUpperCase(); break;
+          statusLabel = st.toUpperCase().tr(context); break;
         case 'idle':
           statusColor = T.muted(context); statusIcon = Icons.radio_button_unchecked;
-          statusLabel = 'IDLE'; break;
+          statusLabel = 'IDLE'.tr(context); break;
         default:
           statusColor = T.err(context); statusIcon = Icons.help_outline;
-          statusLabel = 'EKOS NON CONNESSO';
+          statusLabel = 'EKOS NON CONNESSO'.tr(context);
       }
     }
 
@@ -273,7 +281,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
               Icon(Icons.image_outlined, size: 42,
                   color: Colors.white.withValues(alpha: 0.3)),
               const SizedBox(height: 8),
-              Text('Nessuna immagine ancora\nTappa "ACQUISISCI E RISOLVI"',
+              Text('Nessuna immagine ancora\nTappa "ACQUISISCI E RISOLVI"'.tr(context),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12)),
@@ -345,14 +353,14 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       ),
       child: Column(children: [
         Row(children: [
-          Expanded(child: _numField(_expCtl, 'TEMPO (s)',
+          Expanded(child: _numField(_expCtl, 'TEMPO (s)'.tr(context),
               decimal: true, enabled: !inProgress)),
           const SizedBox(width: 8),
-          Expanded(child: _numField(_gainCtl, 'GAIN',
+          Expanded(child: _numField(_gainCtl, 'GAIN'.tr(context),
               enabled: !inProgress)),
         ]),
         const SizedBox(height: 10),
-        Text('BINNING', style: TextStyle(color: T.muted(context),
+        Text('BINNING'.tr(context), style: TextStyle(color: T.muted(context),
             fontSize: 10, letterSpacing: 1.4)),
         const SizedBox(height: 4),
         Row(children: [
@@ -378,16 +386,16 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     final String label;
     if (mountSlewing) {
       icon = Icons.sync;
-      label = 'MONTATURA IN SLEW…';
+      label = 'MONTATURA IN SLEW…'.tr(context);
     } else if (inProgress) {
       icon = Icons.sync;
-      label = 'IN CORSO IN EKOS…';
+      label = 'IN CORSO IN EKOS…'.tr(context);
     } else if (_busy) {
       icon = Icons.gps_fixed;
-      label = 'INVIO…';
+      label = 'INVIO…'.tr(context);
     } else {
       icon = Icons.gps_fixed;
-      label = 'ACQUISISCI E RISOLVI';
+      label = 'ACQUISISCI E RISOLVI'.tr(context);
     }
     return Row(children: [
       Expanded(child: SizedBox(
@@ -422,25 +430,52 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     ]);
   }
 
+  /// Spinge l'azione a Ekos IMMEDIATAMENTE al tap del chip.
+  /// Era la causa principale del bug "i pulsanti non funzionano":
+  /// inviare setSolverAction insieme a captureAndSolve creava una race
+  /// condition (Q_NOREPLY async vs bool sync su due qdbus6 separati).
+  /// Inviare l'action subito al cambio chip dà a Ekos tutto il tempo di
+  /// aggiornare m_CurrentGotoMode prima che l'utente prema "Acquisisci".
+  Future<void> _pushActionToEkos(AppState s, int action) async {
+    if (s.api == null) return;
+    try {
+      await s.api!.alignEkosSet(solverAction: action);
+      if (mounted) {
+        final labels = {0: 'Sync', 1: 'Slew to target', 2: 'Niente'};
+        showSnack(context,
+            '${'AZIONE: '.tr(context)}${(labels[action] ?? '?').tr(context)} → Ekos');
+      }
+    } catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
+    }
+  }
+
   Widget _solverActionRow(bool inProgress) {
+    final s = context.read<AppState>();
     return Row(children: [
-      Text('AZIONE: ', style: TextStyle(color: T.muted(context), fontSize: 10,
+      Text('AZIONE: '.tr(context), style: TextStyle(color: T.muted(context), fontSize: 10,
           letterSpacing: 1.2, fontWeight: FontWeight.w600)),
       const SizedBox(width: 4),
       Expanded(child: Wrap(spacing: 4, runSpacing: 4, children: [
         // Ekos enum: 0=Sync, 1=Slew, 2=Nothing
-        ChipToggle(label: 'Sync', selected: _solverAction == 0,
-            onTap: inProgress ? null : () => setState(() {
-              _solverAction = 0; _savePrefs();
-            })),
-        ChipToggle(label: 'Slew to target', selected: _solverAction == 1,
-            onTap: inProgress ? null : () => setState(() {
-              _solverAction = 1; _savePrefs();
-            })),
-        ChipToggle(label: 'Niente', selected: _solverAction == 2,
-            onTap: inProgress ? null : () => setState(() {
-              _solverAction = 2; _savePrefs();
-            })),
+        ChipToggle(label: 'Sync'.tr(context), selected: _solverAction == 0,
+            onTap: inProgress ? null : () {
+              setState(() { _solverAction = 0; });
+              _savePrefs();
+              _pushActionToEkos(s, 0);
+            }),
+        ChipToggle(label: 'Slew to target'.tr(context), selected: _solverAction == 1,
+            onTap: inProgress ? null : () {
+              setState(() { _solverAction = 1; });
+              _savePrefs();
+              _pushActionToEkos(s, 1);
+            }),
+        ChipToggle(label: 'Niente'.tr(context), selected: _solverAction == 2,
+            onTap: inProgress ? null : () {
+              setState(() { _solverAction = 2; });
+              _savePrefs();
+              _pushActionToEkos(s, 2);
+            }),
       ])),
     ]);
   }
@@ -475,21 +510,21 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         Row(children: [
           Icon(Icons.check_circle, color: T.ok(context), size: 16),
           const SizedBox(width: 6),
-          Text('SOLUZIONE TROVATA', style: TextStyle(
+          Text('SOLUZIONE TROVATA'.tr(context), style: TextStyle(
               color: T.ok(context), fontSize: 11,
               fontWeight: FontWeight.w700, letterSpacing: 1)),
           if (errStr != null) ...[
             const Spacer(),
-            Text('Err ', style: TextStyle(color: T.muted(context), fontSize: 10)),
+            Text('Err '.tr(context), style: TextStyle(color: T.muted(context), fontSize: 10)),
             Text(errStr, style: TextStyle(color: errColor, fontSize: 13,
                 fontWeight: FontWeight.w700, fontFamily: 'monospace')),
           ],
         ]),
         const SizedBox(height: 8),
         Row(children: [
-          Expanded(child: _bigKv('AR', _hms(sol['ra_hours']))),
+          Expanded(child: _bigKv('AR'.tr(context), _hms(sol['ra_hours']))),
           const SizedBox(width: 8),
-          Expanded(child: _bigKv('DEC', _dms(sol['dec_deg']))),
+          Expanded(child: _bigKv('DEC'.tr(context), _dms(sol['dec_deg']))),
         ]),
         const SizedBox(height: 4),
         Wrap(spacing: 14, runSpacing: 4, children: [
@@ -520,13 +555,12 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         Row(children: [
           Icon(Icons.error, color: T.err(context), size: 16),
           const SizedBox(width: 6),
-          Text('SOLVE FALLITO', style: TextStyle(
+          Text('SOLVE FALLITO'.tr(context), style: TextStyle(
               color: T.err(context), fontSize: 11,
               fontWeight: FontWeight.w700, letterSpacing: 1)),
         ]),
         const SizedBox(height: 6),
-        Text('Possibili cause: poche stelle, focus errato, scale hint sbagliato,'
-            ' tempo di esposizione insufficiente, image bianca/saturata.',
+        Text('Possibili cause: poche stelle, focus errato, scale hint sbagliato, tempo di esposizione insufficiente, image bianca/saturata.'.tr(context),
             style: TextStyle(color: T.muted(context), fontSize: 11)),
         if (lastErr != null) Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -548,7 +582,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       child: Row(children: [
         Icon(Icons.cancel, color: T.warn(context), size: 16),
         const SizedBox(width: 8),
-        Text('Solve interrotto',
+        Text('Solve interrotto'.tr(context),
             style: TextStyle(color: T.warn(context),
                 fontWeight: FontWeight.w700, fontSize: 12)),
       ]),
@@ -567,23 +601,23 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         border: Border.all(color: T.line(context)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('TELESCOPIO + STRUMENTAZIONE',
+        Text('TELESCOPIO + STRUMENTAZIONE'.tr(context),
             style: TextStyle(color: T.muted(context),
                 fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
         Row(children: [
-          Expanded(child: _smallKv('Mount RA',
+          Expanded(child: _smallKv('Mount RA'.tr(context),
               m == null ? '—' : _hms(m['ra_hours']))),
-          Expanded(child: _smallKv('Mount DEC',
+          Expanded(child: _smallKv('Mount DEC'.tr(context),
               m == null ? '—' : _dms(m['dec_deg']))),
         ]),
         const SizedBox(height: 4),
         Row(children: [
-          if (tel != null) Expanded(child: _smallKv('Focale',
+          if (tel != null) Expanded(child: _smallKv('Focale'.tr(context),
               '${(tel['focal_length_mm'] as num).toStringAsFixed(0)}mm f/${(tel['f_ratio'] as num?)?.toStringAsFixed(1) ?? '—'}')),
-          if (cam != null) Expanded(child: _smallKv('Cam', cam,
+          if (cam != null) Expanded(child: _smallKv('Cam'.tr(context), cam,
               ellipsis: true)),
-          if (filter != null) Expanded(child: _smallKv('Filtro', filter)),
+          if (filter != null) Expanded(child: _smallKv('Filtro'.tr(context), filter)),
         ]),
       ]),
     );
@@ -602,7 +636,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       ),
       child: Column(children: [
         Row(children: [
-          Text('ERRORE PUNTAMENTO',
+          Text('ERRORE PUNTAMENTO'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 10,
                   letterSpacing: 1.4, fontWeight: FontWeight.w700)),
           const Spacer(),
@@ -634,7 +668,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         border: Border.all(color: T.line(context)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('STORICO SOLVE (ultimi ${_history.length})',
+        Text('${'STORICO SOLVE (ultimi '.tr(context)}${_history.length})',
             style: TextStyle(color: T.muted(context), fontSize: 10,
                 letterSpacing: 1.4, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
@@ -680,14 +714,14 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     final log = (_full?['log'] as List? ?? []).cast<String>();
     final train = _full?['opticalTrain']?.toString() ?? '—';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _smallKv('Optical train', train),
+      _smallKv('Optical train'.tr(context), train),
       const SizedBox(height: 8),
-      Text('MODALITÀ SOLVER',
+      Text('MODALITÀ SOLVER'.tr(context),
           style: TextStyle(color: T.muted(context), fontSize: 10, letterSpacing: 1.4)),
       const SizedBox(height: 4),
       Row(children: [
         Expanded(child: ChipToggle(
-          label: 'StellarSolver', selected: _solverMode == 0,
+          label: 'StellarSolver'.tr(context), selected: _solverMode == 0,
           onTap: inProgress ? null : () async {
             setState(() => _solverMode = 0);
             _savePrefs();
@@ -697,7 +731,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         )),
         const SizedBox(width: 6),
         Expanded(child: ChipToggle(
-          label: 'Remote (INDI)', selected: _solverMode == 1,
+          label: 'Remote (INDI)'.tr(context), selected: _solverMode == 1,
           onTap: inProgress ? null : () async {
             setState(() => _solverMode = 1);
             _savePrefs();
@@ -712,7 +746,7 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         child: Row(children: [
           Icon(_showLog ? Icons.expand_more : Icons.chevron_right,
               size: 16, color: T.muted(context)),
-          Text('Log Ekos Align (${log.length} righe)',
+          Text('${'Log Ekos Align ('.tr(context)}${log.length}${' righe)'.tr(context)}',
               style: TextStyle(color: T.muted(context), fontSize: 11)),
         ]),
       ),

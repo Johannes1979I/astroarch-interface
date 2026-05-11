@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -36,7 +37,7 @@ class _AlignScreenState extends State<AlignScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Align'),
+        title: Text('Align'.tr(context)),
         leading: IconButton(
           icon: const Icon(Icons.menu),
           onPressed: openShellDrawer,
@@ -46,9 +47,9 @@ class _AlignScreenState extends State<AlignScreen> with SingleTickerProviderStat
           indicatorColor: T.accent(context),
           labelColor: T.accent(context),
           unselectedLabelColor: T.muted(context),
-          tabs: const [
-            Tab(icon: Icon(Icons.gps_fixed, size: 18), text: 'PLATE SOLVE'),
-            Tab(icon: Icon(Icons.explore, size: 18), text: 'POLAR ALIGN'),
+          tabs: [
+            Tab(icon: const Icon(Icons.gps_fixed, size: 18), text: 'PLATE SOLVE'.tr(context)),
+            Tab(icon: const Icon(Icons.explore, size: 18), text: 'POLAR ALIGN'.tr(context)),
           ],
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../i18n/strings.dart';
 import '../../state/app_state.dart';
 import '../../state/capture_job.dart';
 import '../../theme/app_theme.dart';
@@ -75,7 +76,7 @@ class _JobFormScreenState extends State<JobFormScreen> {
     j.ditherEachFrame = _dither;
     j.targetName = _targetCtl.text.trim().isEmpty ? null : _targetCtl.text.trim();
     if (j.exposureSec <= 0 || j.count <= 0) {
-      showSnack(context, 'Tempo e count devono essere > 0', error: true);
+      showSnack(context, 'Tempo e count devono essere > 0'.tr(context), error: true);
       return;
     }
     Navigator.pop(context, j);
@@ -85,12 +86,12 @@ class _JobFormScreenState extends State<JobFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.initial == null ? 'Nuovo job' : 'Modifica job'),
+        title: Text(widget.initial == null ? 'Nuovo job'.tr(context) : 'Modifica job'.tr(context)),
         actions: [
           TextButton.icon(
             onPressed: _save,
             icon: Icon(Icons.check, color: T.accent(context)),
-            label: Text('SALVA',
+            label: Text('SALVA'.tr(context),
                 style: TextStyle(color: T.accent(context), fontWeight: FontWeight.w700)),
           ),
         ],
@@ -98,22 +99,22 @@ class _JobFormScreenState extends State<JobFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(14),
         children: [
-          const SectionLabel('Filter'),
+          SectionLabel('Filter'.tr(context)),
           if (widget.filters.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text('Nessun filter wheel disponibile (filter ignorato)',
+              child: Text('Nessun filter wheel disponibile (filter ignorato)'.tr(context),
                   style: TextStyle(color: T.muted(context), fontSize: 11)),
             )
           else
             Wrap(spacing: 6, runSpacing: 6, children: [
-              ChipToggle(label: '— libero —', selected: _filter == null,
+              ChipToggle(label: '— libero —'.tr(context), selected: _filter == null,
                   onTap: () => setState(() => _filter = null)),
               for (final f in widget.filters)
                 ChipToggle(label: f, selected: _filter == f,
                     onTap: () => setState(() => _filter = f)),
             ]),
-          const SectionLabel('Frame type'),
+          SectionLabel('Frame type'.tr(context)),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final ft in const ['FRAME_LIGHT', 'FRAME_DARK', 'FRAME_FLAT', 'FRAME_BIAS'])
               ChipToggle(
@@ -122,7 +123,7 @@ class _JobFormScreenState extends State<JobFormScreen> {
                 onTap: () => setState(() => _frameType = ft),
               ),
           ]),
-          const SectionLabel('Formato file (transfer)'),
+          SectionLabel('Formato file (transfer)'.tr(context)),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final f in const ['FITS', 'NATIVE', 'XISF'])
               ChipToggle(
@@ -131,14 +132,14 @@ class _JobFormScreenState extends State<JobFormScreen> {
                 onTap: () => setState(() => _transferFormat = f),
               ),
           ]),
-          const SectionLabel('Formato sensore (color cam)'),
+          SectionLabel('Formato sensore (color cam)'.tr(context)),
           Wrap(spacing: 6, runSpacing: 6, children: [
-            ChipToggle(label: 'RAW (Bayer)', selected: _captureFormat == 'RAW',
+            ChipToggle(label: 'RAW (Bayer)'.tr(context), selected: _captureFormat == 'RAW',
                 onTap: () => setState(() => _captureFormat = 'RAW')),
-            ChipToggle(label: 'RGB (debayered)', selected: _captureFormat == 'RGB',
+            ChipToggle(label: 'RGB (debayered)'.tr(context), selected: _captureFormat == 'RGB',
                 onTap: () => setState(() => _captureFormat = 'RGB')),
           ]),
-          const SectionLabel('Binning'),
+          SectionLabel('Binning'.tr(context)),
           Row(children: [
             for (final b in [1, 2, 3, 4]) ...[
               Expanded(child: ChipToggle(
@@ -149,25 +150,25 @@ class _JobFormScreenState extends State<JobFormScreen> {
               if (b < 4) const SizedBox(width: 4),
             ]
           ]),
-          const SectionLabel('Esposizione'),
+          SectionLabel('Esposizione'.tr(context)),
           Row(children: [
-            Expanded(child: _num(_expCtl, 'TEMPO (s)', '60', decimal: true)),
+            Expanded(child: _num(_expCtl, 'TEMPO (s)'.tr(context), '60', decimal: true)),
             const SizedBox(width: 8),
-            Expanded(child: _num(_countCtl, 'COUNT', '20')),
+            Expanded(child: _num(_countCtl, 'COUNT'.tr(context), '20')),
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _num(_gainCtl, 'GAIN', '100')),
+            Expanded(child: _num(_gainCtl, 'GAIN'.tr(context), '100')),
             const SizedBox(width: 8),
-            Expanded(child: _num(_offsetCtl, 'OFFSET', '50')),
+            Expanded(child: _num(_offsetCtl, 'OFFSET'.tr(context), '50')),
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _num(_delayCtl, 'DELAY (s)', '2', decimal: true)),
+            Expanded(child: _num(_delayCtl, 'DELAY (s)'.tr(context), '2', decimal: true)),
             const SizedBox(width: 8),
             Expanded(
               child: SwitchListTile(
-                title: const Text('Dither', style: TextStyle(fontSize: 13)),
+                title: Text('Dither'.tr(context), style: const TextStyle(fontSize: 13)),
                 value: _dither,
                 onChanged: (v) => setState(() => _dither = v),
                 contentPadding: EdgeInsets.zero,
@@ -175,11 +176,11 @@ class _JobFormScreenState extends State<JobFormScreen> {
               ),
             ),
           ]),
-          const SectionLabel('Target (opzionale)'),
+          SectionLabel('Target (opzionale)'.tr(context)),
           TextField(
             controller: _targetCtl,
-            decoration: const InputDecoration(
-              hintText: 'M 31, NGC 7000, …',
+            decoration: InputDecoration(
+              hintText: 'M 31, NGC 7000, …'.tr(context),
               isDense: true,
             ),
           ),

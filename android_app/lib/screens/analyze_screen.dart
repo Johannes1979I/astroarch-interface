@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -15,25 +16,25 @@ class AnalyzeScreen extends StatelessWidget {
     final s = context.watch<AppState>();
     final phd2 = s.phd2History;
     return Scaffold(
-      appBar: AppBar(title: const Text('Analyze')),
+      appBar: AppBar(title: Text('Analyze'.tr(context))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 80),
         children: [
-          const SectionLabel('Sessione corrente'),
+          SectionLabel('Sessione corrente'.tr(context)),
           GridView.count(
             crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 6, crossAxisSpacing: 6, childAspectRatio: 1.4,
             children: [
-              StatusCard(header: 'EVENTS WS', value: '${s.wsEventsReceived}'),
-              StatusCard(header: 'PROPS', value: '${s.properties.length}'),
-              StatusCard(header: 'DEVICES', value: '${s.devices.length}'),
+              StatusCard(header: 'EVENTS WS'.tr(context), value: '${s.wsEventsReceived}'),
+              StatusCard(header: 'PROPS'.tr(context), value: '${s.properties.length}'),
+              StatusCard(header: 'DEVICES'.tr(context), value: '${s.devices.length}'),
             ],
           ),
-          const SectionLabel('Ultimo frame'),
+          SectionLabel('Ultimo frame'.tr(context)),
           _lastFrameInfo(context, s),
-          const SectionLabel('PHD2 RMS storico'),
+          SectionLabel('PHD2 RMS storico'.tr(context)),
           _phd2Chart(context, phd2),
-          const SectionLabel('Messaggi INDI'),
+          SectionLabel('Messaggi INDI'.tr(context)),
           if (s.messages.isEmpty)
             Padding(padding: const EdgeInsets.all(20),
                 child: Text('—', style: TextStyle(color: T.muted(context)))),
@@ -53,7 +54,7 @@ class AnalyzeScreen extends StatelessWidget {
     final m = s.lastFrameMeta;
     if (m.isEmpty) {
       return Padding(padding: const EdgeInsets.all(12),
-          child: Text('Nessun frame ancora.', style: TextStyle(color: T.muted(c))));
+          child: Text('Nessun frame ancora.'.tr(c), style: TextStyle(color: T.muted(c))));
     }
     return Container(
       padding: const EdgeInsets.all(12),
@@ -87,7 +88,7 @@ class AnalyzeScreen extends StatelessWidget {
           color: T.panel(c), borderRadius: BorderRadius.circular(10),
           border: Border.all(color: T.line(c)),
         ),
-        child: Center(child: Text('No PHD2 data', style: TextStyle(color: T.muted(c)))),
+        child: Center(child: Text('No PHD2 data'.tr(c), style: TextStyle(color: T.muted(c)))),
       );
     }
     final raSpots = <FlSpot>[];

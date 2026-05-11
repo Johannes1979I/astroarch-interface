@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -25,7 +26,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
     try {
       _data = await s.api!.observatoryStatus();
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -33,8 +34,8 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
 
   Future<void> _safe(Future Function() fn, String okMsg) async {
     try { await fn(); await _refresh(); if (mounted) showSnack(context, okMsg); }
-    on ApiException catch (e) { if (mounted) showSnack(context, 'Errore: ${e.body}', error: true); }
-    catch (e) { if (mounted) showSnack(context, 'Errore: $e', error: true); }
+    on ApiException catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true); }
+    catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true); }
   }
 
   @override
@@ -51,7 +52,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
         leading: Builder(builder: (c) => IconButton(
             icon: const Icon(Icons.menu),
             onPressed: () => Scaffold.of(c).openDrawer())),
-        title: const Text('Observatory'),
+        title: Text('Observatory'.tr(context)),
         actions: [
           IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
         ],
@@ -64,7 +65,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 80),
                 children: [
                   if (!hasAnyConnected) _emptyHint(s, candidates),
-                  _section('Weather', (_data?['weather'] as List? ?? []).cast<Map>()),
+                  _section('Weather'.tr(context), (_data?['weather'] as List? ?? []).cast<Map>()),
                   _domeSection(s),
                   _dustCapSection(s),
                   _flatPanelSection(s),
@@ -93,9 +94,8 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
         const SizedBox(width: 10),
         Expanded(child: Text(
           hasAny
-              ? 'Nessun device meteo/dome connesso. '
-                'Tappa CONNECT sui driver candidati qui sotto.'
-              : 'Nessun driver meteo/dome/flat caricato in questo profilo Ekos.',
+              ? 'Nessun device meteo/dome connesso. Tappa CONNECT sui driver candidati qui sotto.'.tr(context)
+              : 'Nessun driver meteo/dome/flat caricato in questo profilo Ekos.'.tr(context),
           style: TextStyle(color: T.text(context), fontSize: 12),
         )),
       ]),
@@ -113,7 +113,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
     }
     if (all.isEmpty) return const SizedBox();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SectionLabel('Driver disponibili nel profilo'),
+      SectionLabel('Driver disponibili nel profilo'.tr(context)),
       for (final c in all) _candidateRow(s, c),
     ]);
   }
@@ -148,7 +148,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(c['device'] ?? '',
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          Text('candidato $catLabel · ${connected ? "connesso (no proprietà ancora)" : "non connesso"}',
+          Text('${'candidato '.tr(context)}$catLabel · ${connected ? 'connesso (no proprietà ancora)'.tr(context) : 'non connesso'.tr(context)}',
               style: TextStyle(color: T.muted(context), fontSize: 11)),
         ])),
         TextButton(
@@ -163,10 +163,10 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
               await s.refreshSnapshot();
               _refresh();
             } catch (e) {
-              if (mounted) showSnack(context, 'Errore: $e', error: true);
+              if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
             }
           },
-          child: Text(connected ? 'DISCONNECT' : 'CONNECT',
+          child: Text(connected ? 'DISCONNECT'.tr(context) : 'CONNECT'.tr(context),
               style: TextStyle(
                 color: connected ? T.muted(context) : T.ok(context),
                 fontWeight: FontWeight.w700, fontSize: 11,
@@ -220,7 +220,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('Dome / Tetto'),
+        SectionLabel('Dome / Tetto'.tr(context)),
         for (final d in domes) _domeCard(s, d),
       ],
     );
@@ -244,16 +244,16 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
           Row(children: [
             Text(dev, style: const TextStyle(fontWeight: FontWeight.w600)),
             const Spacer(),
-            StatusBadge(text: isOpen ? 'OPEN' : 'CLOSED',
+            StatusBadge(text: isOpen ? 'OPEN'.tr(context) : 'CLOSED'.tr(context),
                 color: isOpen ? T.ok(context) : T.warn(context)),
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            Expanded(child: PrimaryButton(label: 'OPEN', icon: Icons.unfold_more, color: T.ok(context),
-                onPressed: () => _safe(() => s.api!.domeShutter(dev, true), 'Apertura'))),
+            Expanded(child: PrimaryButton(label: 'OPEN'.tr(context), icon: Icons.unfold_more, color: T.ok(context),
+                onPressed: () => _safe(() => s.api!.domeShutter(dev, true), 'Apertura'.tr(context)))),
             const SizedBox(width: 8),
-            Expanded(child: GhostButton(label: 'CLOSE', icon: Icons.unfold_less, danger: true,
-                onPressed: () => _safe(() => s.api!.domeShutter(dev, false), 'Chiusura'))),
+            Expanded(child: GhostButton(label: 'CLOSE'.tr(context), icon: Icons.unfold_less, danger: true,
+                onPressed: () => _safe(() => s.api!.domeShutter(dev, false), 'Chiusura'.tr(context)))),
           ]),
         ],
       ),
@@ -266,7 +266,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('Dust cap'),
+        SectionLabel('Dust cap'.tr(context)),
         for (final c in caps) Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
@@ -277,11 +277,11 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
           child: Row(children: [
             Text(c['device'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
             const Spacer(),
-            ChipToggle(label: 'Open', selected: c['parked'] == false,
-                onTap: () => _safe(() => s.api!.dustCap(c['device'], false), 'Open')),
+            ChipToggle(label: 'Open'.tr(context), selected: c['parked'] == false,
+                onTap: () => _safe(() => s.api!.dustCap(c['device'], false), 'Open'.tr(context))),
             const SizedBox(width: 6),
-            ChipToggle(label: 'Park', selected: c['parked'] == true,
-                onTap: () => _safe(() => s.api!.dustCap(c['device'], true), 'Park')),
+            ChipToggle(label: 'Park'.tr(context), selected: c['parked'] == true,
+                onTap: () => _safe(() => s.api!.dustCap(c['device'], true), 'Park'.tr(context))),
           ]),
         ),
       ],
@@ -294,7 +294,7 @@ class _ObservatoryScreenState extends State<ObservatoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('Flat panel'),
+        SectionLabel('Flat panel'.tr(context)),
         for (final p in panels)
           _FlatPanelCard(device: p['device'], on: p['on'] == true, intensity: (p['intensity'] as num?)?.toDouble() ?? 0,
               onChanged: _safe),
@@ -335,13 +335,13 @@ class _FlatPanelCardState extends State<_FlatPanelCard> {
             const Spacer(),
             Switch(value: _on, onChanged: (v) {
               setState(() => _on = v);
-              widget.onChanged(() => s.api!.flatPanel(widget.device, on: v), v ? 'Panel on' : 'Panel off');
+              widget.onChanged(() => s.api!.flatPanel(widget.device, on: v), v ? 'Panel on'.tr(context) : 'Panel off'.tr(context));
             }),
           ]),
           Slider(value: _v, min: 0, max: 255, onChanged: (v) => setState(() => _v = v),
               onChangeEnd: (v) => widget.onChanged(
-                () => s.api!.flatPanel(widget.device, on: _on, intensity: v), 'Intensity ${v.round()}')),
-          Text('Intensity ${_v.round()} / 255',
+                () => s.api!.flatPanel(widget.device, on: _on, intensity: v), '${'Intensity '.tr(context)}${v.round()}')),
+          Text('${'Intensity '.tr(context)}${_v.round()} / 255',
               style: TextStyle(color: T.muted(context), fontSize: 11)),
         ],
       ),

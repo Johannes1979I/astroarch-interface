@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../i18n/strings.dart';
 import '../theme/app_theme.dart';
 
 /// Schermata diagnostica step-by-step per capire dove si rompe la catena
@@ -259,13 +260,13 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Diagnostica connessione'),
+        title: Text('Diagnostica connessione'.tr(context)),
         actions: [
           TextButton.icon(
             onPressed: running ? null : _run,
             icon: Icon(running ? Icons.sync : Icons.play_arrow,
                 color: running ? T.muted(context) : T.accent(context)),
-            label: Text(running ? 'IN CORSO' : 'AVVIA',
+            label: Text(running ? 'IN CORSO'.tr(context) : 'AVVIA'.tr(context),
                 style: TextStyle(color: running ? T.muted(context) : T.accent(context),
                     fontWeight: FontWeight.w700)),
           ),
@@ -280,9 +281,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Target: ${widget.host}:${widget.port}',
+                Text('${'Target: '.tr(context)}${widget.host}:${widget.port}',
                     style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600)),
-                Text('Token: ${widget.token.substring(0, widget.token.length.clamp(0, 8))}…',
+                Text('${'Token: '.tr(context)}${widget.token.substring(0, widget.token.length.clamp(0, 8))}…',
                     style: TextStyle(fontFamily: 'monospace', color: T.muted(context), fontSize: 11)),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -293,7 +294,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                         ? const SizedBox(width: 16, height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                         : const Icon(Icons.play_arrow, color: Colors.black),
-                    label: Text(running ? 'TEST IN CORSO…' : 'AVVIA TEST',
+                    label: Text(running ? 'TEST IN CORSO…'.tr(context) : 'AVVIA TEST'.tr(context),
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),
@@ -324,7 +325,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(s.label,
+                            Text(s.label.tr(context),
                                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                             if (s.detail.isNotEmpty) Padding(
                               padding: const EdgeInsets.only(top: 2),

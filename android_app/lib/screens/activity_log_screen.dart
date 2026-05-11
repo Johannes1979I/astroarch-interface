@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../theme/app_theme.dart';
 
 /// Activity log: mostra le ultime chiamate API con timestamp, status, errori.
@@ -31,13 +32,13 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
     final entries = ApiLog.entries;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Activity Log · ${entries.length}'),
+        title: Text('${'Activity Log'.tr(context)} · ${entries.length}'),
         actions: [
           IconButton(onPressed: () => ApiLog.clear(), icon: const Icon(Icons.delete_outline)),
         ],
       ),
       body: entries.isEmpty
-          ? Center(child: Text('Nessuna chiamata API ancora.\nInteragisci con l\'app per vedere l\'attività.',
+          ? Center(child: Text('Nessuna chiamata API ancora.\nInteragisci con l\'app per vedere l\'attività.'.tr(context),
               textAlign: TextAlign.center, style: TextStyle(color: T.muted(context))))
           : ListView.separated(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 80),
@@ -127,7 +128,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
             children: [
               Text('${e.method}  ${e.path}', style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              Text('${_fmtTime(e.ts)}  ·  ${e.duration.inMilliseconds}ms  ·  status ${e.status ?? "?"}',
+              Text('${_fmtTime(e.ts)}  ·  ${e.duration.inMilliseconds}ms  ·  ${'status'.tr(context)} ${e.status ?? "?"}',
                   style: TextStyle(color: T.muted(context), fontSize: 11)),
               const SizedBox(height: 12),
               Container(
@@ -151,7 +152,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                     Navigator.pop(context);
                   },
                   icon: const Icon(Icons.copy, size: 14),
-                  label: const Text('Copia'),
+                  label: Text('Copia'.tr(context)),
                 ),
               ),
             ],

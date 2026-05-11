@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../api/api_client.dart';
+import '../../i18n/strings.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
@@ -33,38 +34,38 @@ class _PolarAlignTabState extends State<PolarAlignTab> {
     // Pre-check
     final m = s.mountDevice();
     if (m == null) {
-      showSnack(context, 'Mount non connesso', error: true); return;
+      showSnack(context, 'Mount non connesso'.tr(context), error: true); return;
     }
     final park = s.prop(m, 'TELESCOPE_PARK');
     if (propValue(park, 'PARK') == true) {
-      showSnack(context, 'Mount in park: unpark prima di iniziare', error: true);
+      showSnack(context, 'Mount in park: unpark prima di iniziare'.tr(context), error: true);
       return;
     }
 
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       backgroundColor: T.panel(context),
-      title: const Text('Avvia Polar Align?'),
+      title: Text('Avvia Polar Align?'.tr(context)),
       content: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Routine 3-step drift-based:'),
+          Text('Routine 3-step drift-based:'.tr(context)),
           const SizedBox(height: 8),
-          Text('1. Cattura attuale + plate solve → posizione 1',
+          Text('1. Cattura attuale + plate solve → posizione 1'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 12)),
-          Text('2. Slew ${_raOffsetMin.toInt()}\' RA → cattura + solve → posizione 2',
+          Text('${'2. Slew '.tr(context)}${_raOffsetMin.toInt()}\'${' RA → cattura + solve → posizione 2'.tr(context)}',
               style: TextStyle(color: T.muted(context), fontSize: 12)),
-          Text('3. Slew altri ${_raOffsetMin.toInt()}\' RA → cattura + solve → pos. 3',
+          Text('${'3. Slew altri '.tr(context)}${_raOffsetMin.toInt()}\'${' RA → cattura + solve → pos. 3'.tr(context)}',
               style: TextStyle(color: T.muted(context), fontSize: 12)),
           const SizedBox(height: 8),
-          Text('Calcola errori AZ / ALT dal drift in Dec.',
+          Text('Calcola errori AZ / ALT dal drift in Dec.'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 12)),
           const SizedBox(height: 12),
-          Text('Suggerito: punta vicino al meridiano + equatore celeste prima di iniziare',
+          Text('Suggerito: punta vicino al meridiano + equatore celeste prima di iniziare'.tr(context),
               style: TextStyle(color: T.warn(context), fontSize: 12, fontStyle: FontStyle.italic)),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('ANNULLA')),
-        ElevatedButton(onPressed: () => Navigator.pop(c, true), child: const Text('AVVIA')),
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text('ANNULLA'.tr(context))),
+        ElevatedButton(onPressed: () => Navigator.pop(c, true), child: Text('AVVIA'.tr(context))),
       ],
     ));
     if (ok != true) return;
@@ -79,9 +80,9 @@ class _PolarAlignTabState extends State<PolarAlignTab> {
       _pollTimer?.cancel();
       _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -105,7 +106,7 @@ class _PolarAlignTabState extends State<PolarAlignTab> {
     final s = context.read<AppState>();
     try {
       await s.api!.polarAlignAbort(_runId!);
-      if (mounted) showSnack(context, 'Abort');
+      if (mounted) showSnack(context, 'Abort'.tr(context));
     } catch (_) {}
   }
 
@@ -131,35 +132,33 @@ class _PolarAlignTabState extends State<PolarAlignTab> {
             Icon(Icons.info_outline, color: T.accent2(context), size: 20),
             const SizedBox(width: 10),
             Expanded(child: Text(
-              'Polar Alignment misura il disallineamento dell\'asse polare della '
-              'mount via drift in Declinazione tra 3 plate solve in posizioni RA '
-              'diverse. Richiede mount unparked + camera + driver Astrometry.',
+              'Polar Alignment misura il disallineamento dell\'asse polare della mount via drift in Declinazione tra 3 plate solve in posizioni RA diverse. Richiede mount unparked + camera + driver Astrometry.'.tr(context),
               style: TextStyle(color: T.text(context), fontSize: 12, height: 1.4),
             )),
           ]),
         ),
-        const SectionLabel('Parametri routine'),
-        _slider('RA offset tra step', _raOffsetMin, 5, 120,
+        SectionLabel('Parametri routine'.tr(context)),
+        _slider('RA offset tra step'.tr(context), _raOffsetMin, 5, 120,
             (v) => setState(() => _raOffsetMin = v),
             formatter: (v) => '${v.toInt()}\''),
-        _slider('Esposizione cattura', _exposureSec, 1, 30,
+        _slider('Esposizione cattura'.tr(context), _exposureSec, 1, 30,
             (v) => setState(() => _exposureSec = v),
             formatter: (v) => '${v.toStringAsFixed(0)}s'),
         const SizedBox(height: 14),
         Row(children: [
           Expanded(child: PrimaryButton(
-            label: _running ? 'IN CORSO…' : (_busy ? 'AVVIO…' : 'AVVIA POLAR ALIGN'),
+            label: _running ? 'IN CORSO…'.tr(context) : (_busy ? 'AVVIO…'.tr(context) : 'AVVIA POLAR ALIGN'.tr(context)),
             icon: Icons.explore,
             onPressed: _running || _busy ? null : () => _start(s),
           )),
           const SizedBox(width: 8),
           Expanded(child: GhostButton(
-            label: 'ABORT', icon: Icons.stop, danger: true,
+            label: 'ABORT'.tr(context), icon: Icons.stop, danger: true,
             onPressed: _running ? _abort : null,
           )),
         ]),
         if (_runStatus != null) ...[
-          const SectionLabel('Progresso'),
+          SectionLabel('Progresso'.tr(context)),
           _progressCard(),
         ],
       ],
@@ -215,10 +214,10 @@ class _PolarAlignTabState extends State<PolarAlignTab> {
           else
             Icon(st == 'done' ? Icons.check_circle : Icons.error, color: color, size: 16),
           const SizedBox(width: 6),
-          Text('Polar Align: $st',
+          Text('${'Polar Align'.tr(context)}: $st',
               style: TextStyle(color: color, fontWeight: FontWeight.w700)),
           const Spacer(),
-          Text('step $step/3',
+          Text('${'step'.tr(context)} $step/3',
               style: TextStyle(color: T.muted(context), fontFamily: 'monospace')),
         ]),
         const SizedBox(height: 8),
@@ -228,7 +227,7 @@ class _PolarAlignTabState extends State<PolarAlignTab> {
           Row(children: [
             Icon(Icons.straighten, size: 14, color: T.accent(context)),
             const SizedBox(width: 6),
-            Text('Errore Polar (drift Dec):',
+            Text('Errore Polar (drift Dec):'.tr(context),
                 style: TextStyle(color: T.muted(context), fontSize: 11)),
           ]),
           const SizedBox(height: 4),

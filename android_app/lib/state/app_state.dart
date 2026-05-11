@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../api/ws_client.dart';
+import '../i18n/strings.dart';
 import 'capture_job.dart';
 
 /// Stato globale dell'app.
@@ -16,6 +17,9 @@ class AppState extends ChangeNotifier {
   String token = '';
   bool nightMode = false;
   bool useHttps = false;
+  // Lingua UI — IT è default ("Zarletti-Osservatorio Jupiter" è italiano).
+  // Cambiabile da Settings; persistente via SharedPreferences (chiave 'locale').
+  AppLocale locale = AppLocale.it;
 
   // Device selezionato per ogni ruolo (persistente, override automatico se >1 device)
   String? selectedCamera;
@@ -114,6 +118,8 @@ class AppState extends ChangeNotifier {
     token = p.getString('token') ?? '';
     nightMode = p.getBool('night') ?? false;
     useHttps = p.getBool('https') ?? false;
+    final loc = p.getString('locale');
+    locale = (loc == 'en') ? AppLocale.en : AppLocale.it;
     selectedCamera = p.getString('selectedCamera');
     selectedMount = p.getString('selectedMount');
     selectedFocuser = p.getString('selectedFocuser');
@@ -128,6 +134,7 @@ class AppState extends ChangeNotifier {
     await p.setString('token', token);
     await p.setBool('night', nightMode);
     await p.setBool('https', useHttps);
+    await p.setString('locale', locale == AppLocale.en ? 'en' : 'it');
     if (selectedCamera != null) await p.setString('selectedCamera', selectedCamera!); else await p.remove('selectedCamera');
     if (selectedMount != null) await p.setString('selectedMount', selectedMount!); else await p.remove('selectedMount');
     if (selectedFocuser != null) await p.setString('selectedFocuser', selectedFocuser!); else await p.remove('selectedFocuser');
@@ -191,6 +198,12 @@ class AppState extends ChangeNotifier {
 
   void setNight(bool v) {
     nightMode = v;
+    savePrefs();
+    notifyListeners();
+  }
+
+  void setLocale(AppLocale l) {
+    locale = l;
     savePrefs();
     notifyListeners();
   }

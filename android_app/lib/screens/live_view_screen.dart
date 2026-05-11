@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -13,9 +14,9 @@ class LiveViewScreen extends StatelessWidget {
     final jpeg = s.lastFrameJpeg;
     final m = s.lastFrameMeta;
     return Scaffold(
-      appBar: AppBar(title: const Row(children: [LiveDot(), SizedBox(width: 10), Text('Live View')])),
+      appBar: AppBar(title: Row(children: [const LiveDot(), const SizedBox(width: 10), Text('Live View'.tr(context))])),
       body: jpeg == null
-          ? Center(child: Text('Nessun frame ricevuto…', style: TextStyle(color: T.muted(context))))
+          ? Center(child: Text('Nessun frame ricevuto…'.tr(context), style: TextStyle(color: T.muted(context))))
           : Column(
               children: [
                 Expanded(

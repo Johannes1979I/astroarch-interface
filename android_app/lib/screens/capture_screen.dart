@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../state/capture_job.dart';
 import '../theme/app_theme.dart';
@@ -56,43 +57,43 @@ class _CaptureScreenState extends State<CaptureScreen> {
         leading: IconButton(
             icon: const Icon(Icons.menu),
             onPressed: openShellDrawer),
-        title: Text(cam == null ? 'Capture' : 'Capture · $cam', overflow: TextOverflow.ellipsis),
+        title: Text(cam == null ? 'Capture'.tr(context) : '${'Capture'.tr(context)} · $cam', overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
-            tooltip: 'Preset',
+            tooltip: 'Preset'.tr(context),
             icon: const Icon(Icons.bookmark_border),
             onPressed: _showPresets,
           ),
         ],
       ),
       body: cams.isEmpty
-          ? Center(child: Text('Nessuna camera connessa', style: TextStyle(color: T.muted(context))))
+          ? Center(child: Text('Nessuna camera connessa'.tr(context), style: TextStyle(color: T.muted(context))))
           : ListView(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 80),
               children: [
                 if (cams.length > 1) _devicePicker(s, cams),
                 if (cam != null) ...[
                   CoolerPanel(camera: cam, tempCtl: _tempCtl),
-                  const SectionLabel('Sequenza jobs', /* trailing handled below */),
+                  SectionLabel('Sequenza jobs'.tr(context), /* trailing handled below */),
                   _jobsList(s),
                   const SizedBox(height: 8),
                   Row(children: [
                     Expanded(child: GhostButton(
-                      label: 'NUOVO JOB', icon: Icons.add,
+                      label: 'NUOVO JOB'.tr(context), icon: Icons.add,
                       onPressed: _runnerInited && _runner.running ? null
                           : () => _editJob(s, null, filterNames),
                     )),
                     const SizedBox(width: 8),
                     Expanded(child: GhostButton(
-                      label: 'CANCELLA TUTTI', icon: Icons.delete_outline, danger: true,
+                      label: 'CANCELLA TUTTI'.tr(context), icon: Icons.delete_outline, danger: true,
                       onPressed: s.captureJobs.isEmpty || (_runnerInited && _runner.running)
                           ? null : () async {
                               final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
                                 backgroundColor: T.panel(context),
-                                title: const Text('Cancella tutti i job?'),
+                                title: Text('Cancella tutti i job?'.tr(context)),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('NO')),
-                                  ElevatedButton(onPressed: () => Navigator.pop(c, true), child: const Text('CANCELLA')),
+                                  TextButton(onPressed: () => Navigator.pop(c, false), child: Text('NO'.tr(context))),
+                                  ElevatedButton(onPressed: () => Navigator.pop(c, true), child: Text('CANCELLA'.tr(context))),
                                 ],
                               ));
                               if (ok == true) {
@@ -131,12 +132,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
         child: Row(children: [
           Icon(Icons.camera_alt, size: 16, color: T.muted(context)),
           const SizedBox(width: 8),
-          Text('Camera:', style: TextStyle(color: T.muted(context), fontSize: 11, letterSpacing: 1)),
+          Text('Camera:'.tr(context), style: TextStyle(color: T.muted(context), fontSize: 11, letterSpacing: 1)),
           const SizedBox(width: 8),
           Expanded(child: DropdownButtonHideUnderline(
             child: DropdownButton<String?>(
               value: sel, isExpanded: true,
-              hint: Text('— scegli —', style: TextStyle(color: T.warn(context), fontSize: 13)),
+              hint: Text('— scegli —'.tr(context), style: TextStyle(color: T.warn(context), fontSize: 13)),
               dropdownColor: T.panel(context),
               style: TextStyle(color: T.text(context), fontSize: 13, fontWeight: FontWeight.w600),
               items: [
@@ -160,7 +161,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           border: Border.all(color: T.line(context)),
         ),
         child: Center(
-          child: Text('Nessun job · Tap "+ NUOVO JOB" per pianificare',
+          child: Text('Nessun job · Tap "+ NUOVO JOB" per pianificare'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 12)),
         ),
       );
@@ -246,10 +247,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
             if (v == 'dup') s.duplicateCaptureJob(idx);
             if (v == 'del') s.removeCaptureJob(idx);
           },
-          itemBuilder: (c) => const [
-            PopupMenuItem(value: 'edit', child: Text('Modifica')),
-            PopupMenuItem(value: 'dup', child: Text('Duplica')),
-            PopupMenuItem(value: 'del', child: Text('Rimuovi')),
+          itemBuilder: (c) => [
+            PopupMenuItem(value: 'edit', child: Text('Modifica'.tr(context))),
+            PopupMenuItem(value: 'dup', child: Text('Duplica'.tr(context))),
+            PopupMenuItem(value: 'del', child: Text('Rimuovi'.tr(context))),
           ],
         ),
       ]),
@@ -303,22 +304,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
     return Row(children: [
       if (!_runner.running)
         Expanded(child: PrimaryButton(
-          label: 'AVVIA SEQUENZA', icon: Icons.play_arrow,
+          label: 'AVVIA SEQUENZA'.tr(context), icon: Icons.play_arrow,
           onPressed: hasJobs ? () => _confirmAndRun(s, camera, filterDev) : null,
         ))
       else if (_runner.paused)
         Expanded(child: PrimaryButton(
-          label: 'RIPRENDI', icon: Icons.play_arrow,
+          label: 'RIPRENDI'.tr(context), icon: Icons.play_arrow,
           onPressed: () => _runner.resume(),
         ))
       else
         Expanded(child: GhostButton(
-          label: 'PAUSA', icon: Icons.pause,
+          label: 'PAUSA'.tr(context), icon: Icons.pause,
           onPressed: () => _runner.pause(),
         )),
       const SizedBox(width: 8),
       Expanded(child: GhostButton(
-        label: 'ABORT', icon: Icons.stop, danger: true,
+        label: 'ABORT'.tr(context), icon: Icons.stop, danger: true,
         onPressed: _runner.running ? () => _runner.abort() : null,
       )),
     ]);
@@ -332,14 +333,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
     final choice = await showDialog<String>(context: context, builder: (c) => AlertDialog(
       backgroundColor: T.panel(context),
-      title: const Text('Avvia sequenza'),
+      title: Text('Avvia sequenza'.tr(context)),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$n job · durata stimata ~$mins min',
+          Text('$n ${'job · durata stimata ~'.tr(context)}$mins ${'min'.tr(context)}',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          Text('Come vuoi eseguire la sequenza?',
+          Text('Come vuoi eseguire la sequenza?'.tr(context),
               style: TextStyle(color: T.muted(context), fontSize: 12)),
           const SizedBox(height: 14),
           // Opzione 0: Osservazione completa (pre-flight)
@@ -356,12 +357,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 Row(children: [
                   Icon(Icons.auto_awesome, color: T.ok(context), size: 16),
                   const SizedBox(width: 6),
-                  Text('OSSERVAZIONE COMPLETA  ⭐',
+                  Text('${'OSSERVAZIONE COMPLETA'.tr(context)}  ⭐',
                       style: TextStyle(color: T.ok(context), fontWeight: FontWeight.w700)),
                 ]),
                 const SizedBox(height: 4),
-                Text('Slew → plate solve → sync → guide start → cattura. '
-                    'Tutta la pipeline pre-flight come Ekos Scheduler.',
+                Text('Slew → plate solve → sync → guide start → cattura. Tutta la pipeline pre-flight come Ekos Scheduler.'.tr(context),
                     style: TextStyle(color: T.muted(context), fontSize: 11)),
               ]),
             ),
@@ -381,12 +381,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 Row(children: [
                   Icon(Icons.star, color: T.accent(context), size: 16),
                   const SizedBox(width: 6),
-                  Text('VIA EKOS (consigliato)',
+                  Text('VIA EKOS (consigliato)'.tr(context),
                       style: TextStyle(color: T.accent(context), fontWeight: FontWeight.w700)),
                 ]),
                 const SizedBox(height: 4),
-                Text('I job appaiono nella Capture queue di Ekos. '
-                    'Ekos gestisce dither, autofocus, naming, meridian flip.',
+                Text('I job appaiono nella Capture queue di Ekos. Ekos gestisce dither, autofocus, naming, meridian flip.'.tr(context),
                     style: TextStyle(color: T.muted(context), fontSize: 11)),
               ]),
             ),
@@ -405,25 +404,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 Row(children: [
                   Icon(Icons.bolt, color: T.muted(context), size: 16),
                   const SizedBox(width: 6),
-                  const Text('DIRETTO (via INDI)',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  Text('DIRETTO (via INDI)'.tr(context),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
                 ]),
                 const SizedBox(height: 4),
-                Text('Comando diretto al driver INDI. '
-                    'Ekos non vede la sequenza nella sua UI.',
+                Text('Comando diretto al driver INDI. Ekos non vede la sequenza nella sua UI.'.tr(context),
                     style: TextStyle(color: T.muted(context), fontSize: 11)),
               ]),
             ),
           ),
           const SizedBox(height: 8),
           Text(filterDev == null
-              ? 'No filter wheel: filter ignorato per ogni job.'
-              : 'Filter wheel: $filterDev',
+              ? 'No filter wheel: filter ignorato per ogni job.'.tr(context)
+              : '${'Filter wheel: '.tr(context)}$filterDev',
               style: TextStyle(color: T.muted(context), fontSize: 11)),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c), child: const Text('ANNULLA')),
+        TextButton(onPressed: () => Navigator.pop(c), child: Text('ANNULLA'.tr(context))),
       ],
     ));
 
@@ -446,7 +444,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       final alive = await s.api!.captureEkosAlive();
       if (alive['alive'] != true) {
         if (!mounted) return;
-        showSnack(context, 'Ekos non raggiungibile via DBus', error: true);
+        showSnack(context, 'Ekos non raggiungibile via DBus'.tr(context), error: true);
         return;
       }
       // Trova target name (dal primo job se presente)
@@ -464,14 +462,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
       if (!mounted) return;
       if (r['loaded'] == true && r['started'] == true) {
         showSnack(context,
-            'Sequenza inviata a Ekos · ${r['jobs_count']} job · train "${r['start_response']}"');
+            '${'Sequenza inviata a Ekos · '.tr(context)}${r['jobs_count']} ${'job · train'.tr(context)} "${r['start_response']}"');
       } else {
-        showSnack(context, 'Errore: ${r['load_response'] ?? r}', error: true);
+        showSnack(context, '${'Errore: '.tr(context)}${r['load_response'] ?? r}', error: true);
       }
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -483,13 +481,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
       return SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(
           leading: const Icon(Icons.save),
-          title: const Text('Salva sequenza corrente come preset'),
+          title: Text('Salva sequenza corrente come preset'.tr(context)),
           onTap: () async {
             Navigator.pop(c);
-            final name = await _askName('Nome preset');
+            final name = await _askName('Nome preset'.tr(context));
             if (name != null && name.isNotEmpty) {
               await CaptureJobsStore.savePreset(name, s.captureJobs);
-              if (mounted) showSnack(context, 'Preset "$name" salvato');
+              if (mounted) showSnack(context, '${'Preset "'.tr(context)}$name${'" salvato'.tr(context)}');
             }
           },
         ),
@@ -497,13 +495,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
         if (presets.isEmpty)
           Padding(
             padding: const EdgeInsets.all(20),
-            child: Text('Nessun preset salvato', style: TextStyle(color: T.muted(context))),
+            child: Text('Nessun preset salvato'.tr(context), style: TextStyle(color: T.muted(context))),
           )
         else for (final entry in presets.entries)
           ListTile(
             leading: const Icon(Icons.bookmark),
             title: Text(entry.key),
-            subtitle: Text('${entry.value.length} job'),
+            subtitle: Text('${entry.value.length} ${'job'.tr(context)}'),
             trailing: IconButton(
               icon: Icon(Icons.delete_outline, color: T.err(context), size: 18),
               onPressed: () async {
@@ -516,7 +514,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               s.saveCaptureJobs();
               s.notifyListeners();
               Navigator.pop(c);
-              showSnack(context, 'Caricato preset "${entry.key}"');
+              showSnack(context, '${'Caricato preset "'.tr(context)}${entry.key}"');
             },
           ),
       ]));
@@ -529,9 +527,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
       backgroundColor: T.panel(context),
       title: Text(label),
       content: TextField(controller: ctl, autofocus: true,
-          decoration: const InputDecoration(hintText: 'es. M31 LRGB')),
+          decoration: InputDecoration(hintText: 'es. M31 LRGB'.tr(context))),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c), child: const Text('ANNULLA')),
+        TextButton(onPressed: () => Navigator.pop(c), child: Text('ANNULLA'.tr(context))),
         ElevatedButton(onPressed: () => Navigator.pop(c, ctl.text.trim()), child: const Text('OK')),
       ],
     ));
