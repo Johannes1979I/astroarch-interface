@@ -6,10 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Esegui come utente non privilegiato (creato dall'install script)
-User=astroarch
-Group=astroarch
-ExecStart=/usr/bin/python3 -m astroarch_bridge
+User=astronaut
+Group=astronaut
+ExecStart=/usr/bin/astroarch-bridge
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -19,12 +18,12 @@ StandardError=journal
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/astroarch/.config/astroarch-bridge /home/astroarch/Pictures/Ekos
+ReadWritePaths=/home/astronaut/.config/astroarch-bridge /home/astronaut/Pictures/Ekos
 PrivateTmp=true
 LockPersonality=true
 RestrictRealtime=true
 
-# Environment overrides (opzionale - decommentare per personalizzare)
+# Environment overrides (optional - uncomment for customization)
 # Environment=ASTROARCH_PORT=8765
 # Environment=ASTROARCH_INDI_HOST=127.0.0.1
 # Environment=ASTROARCH_INDI_PORT=7624
