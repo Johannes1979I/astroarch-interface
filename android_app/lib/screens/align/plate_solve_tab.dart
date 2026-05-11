@@ -168,7 +168,15 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         const SizedBox(height: 8),
         _solverActionRow(inProgress),
         const SizedBox(height: 10),
-        if (_full?['solution'] != null) _solutionResultCard(),
+        // Mostra la solution SOLO se l'ultimo run è effettivamente completato.
+        // Ekos restituisce sempre l'ultima solution riuscita (anche stale dopo
+        // un fail successivo): senza questo check vedremmo dati stantii.
+        if (_full?['solution'] != null && _full?['status'] == 'complete')
+          _solutionResultCard()
+        else if (_full?['status'] == 'failed')
+          _failedCard()
+        else if (_full?['status'] == 'aborted')
+          _abortedCard(),
         const SizedBox(height: 10),
         _telescopeInfoCard(),
         const SizedBox(height: 8),
@@ -458,6 +466,57 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
             _smallKv('FOV', '${(fov['w_arcmin'] as num).toStringAsFixed(1)}′ × '
                 '${(fov['h_arcmin'] as num).toStringAsFixed(1)}′'),
         ]),
+      ]),
+    );
+  }
+
+  Widget _failedCard() {
+    final log = (_full?['log'] as List? ?? []).cast<String>();
+    final lastErr = log.isEmpty ? null : log.firstWhere(
+        (l) => l.toLowerCase().contains('non riuscit') || l.toLowerCase().contains('fail'),
+        orElse: () => log.first);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: T.err(context).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: T.err(context).withValues(alpha: 0.4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.error, color: T.err(context), size: 16),
+          const SizedBox(width: 6),
+          Text('SOLVE FALLITO', style: TextStyle(
+              color: T.err(context), fontSize: 11,
+              fontWeight: FontWeight.w700, letterSpacing: 1)),
+        ]),
+        const SizedBox(height: 6),
+        Text('Possibili cause: poche stelle, focus errato, scale hint sbagliato,'
+            ' tempo di esposizione insufficiente, image bianca/saturata.',
+            style: TextStyle(color: T.muted(context), fontSize: 11)),
+        if (lastErr != null) Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(lastErr,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 10)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _abortedCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: T.warn(context).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: T.warn(context).withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        Icon(Icons.cancel, color: T.warn(context), size: 16),
+        const SizedBox(width: 8),
+        Text('Solve interrotto',
+            style: TextStyle(color: T.warn(context),
+                fontWeight: FontWeight.w700, fontSize: 12)),
       ]),
     );
   }

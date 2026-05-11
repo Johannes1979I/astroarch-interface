@@ -3,7 +3,7 @@
 > **Full remote control of an AstroArch astronomical observatory from your Android smartphone.**
 > Mobile-friendly clone of KStars/Ekos with all the essential features for an astrophotography session.
 
-[![Version](https://img.shields.io/badge/version-0.2.13-f5a623?style=flat-square)](https://github.com/Johannes1979I/astroarch-interface/releases)
+[![Version](https://img.shields.io/badge/version-0.2.14-f5a623?style=flat-square)](https://github.com/Johannes1979I/astroarch-interface/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Android-8.0%2B-green?style=flat-square&logo=android)](#)
 [![Backend](https://img.shields.io/badge/Backend-Python%203.11%2B-blue?style=flat-square&logo=python)](#)

@@ -81,7 +81,7 @@ def page_layout(canvas, doc):
         canvas.drawString(2 * cm, h - 1.2 * cm, "ASTROARCH INTERFACE")
         canvas.setFillColor(MUTED)
         canvas.setFont("Helvetica", 8)
-        canvas.drawRightString(w - 2 * cm, h - 1.2 * cm, "v0.2.13")
+        canvas.drawRightString(w - 2 * cm, h - 1.2 * cm, "v0.2.14")
     canvas.restoreState()
 
 
@@ -112,7 +112,7 @@ def cover_layout(canvas, doc):
     canvas.drawCentredString(w / 2, 4 * cm, "User Manual & Installation Guide")
     canvas.setFont("Helvetica", 10)
     canvas.setFillColor(colors.HexColor("#8a93a6"))
-    canvas.drawCentredString(w / 2, 3.3 * cm, "Version 0.2.13")
+    canvas.drawCentredString(w / 2, 3.3 * cm, "Version 0.2.14")
     canvas.drawCentredString(w / 2, 2.7 * cm, "Author: Zarletti-Osservatorio Jupiter")
     canvas.drawCentredString(w / 2, 2.1 * cm,
                               datetime.now().strftime("%B %d, %Y"))
@@ -315,7 +315,7 @@ story.append(H2("2.4 APK installation on Android"))
 story.append(P("On the phone:"))
 story.append(ListFlowable([
     ListItem(P("Transfer the <font face='Courier'>"
-               "AstroarchInterface-v0.2.13.apk</font> file to the phone "
+               "AstroarchInterface-v0.2.14.apk</font> file to the phone "
                "(USB / Drive / Tailscale Drop)")),
     ListItem(P("Open the file from the file manager. Android will ask you to "
                'enable "Install apps from unknown sources" for the file '
@@ -747,7 +747,7 @@ story.append(grid_table(
         ["0.2.10", "Plate solve UI redesign (live preview, big action button)"],
         ["0.2.11", "BLOB intercept zero-invasive (parallel INDI client)"],
         ["0.2.12", "Auto-stretch identical to KStars/Ekos (ZScale + asinh MTF)"],
-        ["0.2.13", "Fix Ekos AlignSolverAction enum mapping (Sync/Slew/Nothing)"],
+        ["0.2.14", "Fix Ekos AlignSolverAction enum mapping (Sync/Slew/Nothing)"],
     ],
     col_widths=[2.5 * cm, 13 * cm]))
 
@@ -782,7 +782,7 @@ doc = SimpleDocTemplate(
     title="Astroarch Interface - User Manual",
     author="Zarletti-Osservatorio Jupiter",
     subject="User manual and installation guide",
-    creator="Astroarch Interface v0.2.13",
+    creator="Astroarch Interface v0.2.14",
 )
 doc.build(story, onFirstPage=_on_first_page, onLaterPages=_on_later_pages)
 
