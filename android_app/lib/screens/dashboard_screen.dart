@@ -4,6 +4,7 @@ import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ekos_master_toggle.dart';
 import 'live_view_screen.dart';
 import 'shell_screen.dart';
 
@@ -50,6 +51,10 @@ class DashboardScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
           children: [
+            // Pulsante master Attiva/Disattiva — clone del quadratino
+            // Start/Stop Ekos del pannello Setup. Verde=tutto su, rosso=tutto giù.
+            const EkosMasterToggle(),
+            const SizedBox(height: 12),
             _connectionBanner(context, state),
             const SizedBox(height: 10),
             _targetCard(context, state),

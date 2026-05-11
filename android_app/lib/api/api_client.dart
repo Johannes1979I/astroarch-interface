@@ -146,6 +146,14 @@ class ApiClient {
   Future<Map<String, dynamic>> cameraRoles() => get('/api/system/camera_roles');
   Future<Map<String, dynamic>> simbadSearch(String name) => get('/api/system/simbad', {'name': name});
 
+  // Ekos master control (clone del quadratino Start/Stop in Setup di Ekos)
+  Future<Map<String, dynamic>> ekosState() => get('/api/system/ekos_state');
+  Future<Map<String, dynamic>> ekosStart() => post('/api/system/ekos_start');
+  Future<Map<String, dynamic>> ekosStop() => post('/api/system/ekos_stop');
+  Future<Map<String, dynamic>> ekosConnectDevices() => post('/api/system/ekos_connect_devices');
+  Future<Map<String, dynamic>> ekosDisconnectDevices() => post('/api/system/ekos_disconnect_devices');
+  Future<Map<String, dynamic>> ekosToggle() => post('/api/system/ekos_toggle');
+
   // Align
   Future<Map<String, dynamic>> alignStatus() => get('/api/align/status');
   Future<void> alignSolveLastFrame() => post('/api/align/solve_last_frame');

@@ -130,3 +130,137 @@ async def simbad_search(name: str) -> dict:
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
+
+
+# ============================================================================
+# EKOS MASTER CONTROL (clone del quadratino "Start/Stop Ekos" in Setup)
+# ============================================================================
+#
+# Dal pulsante Dashboard "Attiva/Disattiva" della app:
+#   - GET  /api/system/ekos_state    → status corrente (ekos + indi)
+#   - POST /api/system/ekos_start    → Ekos.start() (carica profilo + INDI + connetti)
+#   - POST /api/system/ekos_stop     → Ekos.stop()  (disconnetti + chiudi INDI)
+#   - POST /api/system/ekos_toggle   → decide auto in base allo stato
+#
+# Ekos enum CommunicationStatus:
+#   0=Idle, 1=Pending, 2=Started, 3=Error
+
+_EKOS_STATUS_LABELS = {
+    0: "idle", 1: "pending", 2: "started", 3: "error",
+}
+
+
+def _label_active(ekos_int: int | None, indi_int: int | None) -> str:
+    """Restituisce uno dei label semplici per la UI:
+    'active' = tutto su, 'inactive' = tutto giù, 'pending' = transizione,
+    'error' = errore, 'unknown' = non leggibile."""
+    if ekos_int is None and indi_int is None:
+        return "unknown"
+    if ekos_int == 3 or indi_int == 3:
+        return "error"
+    if ekos_int == 1 or indi_int == 1:
+        return "pending"
+    # active solo se ekos started E indi started
+    if ekos_int == 2 and indi_int == 2:
+        return "active"
+    return "inactive"
+
+
+@router.get("/ekos_state")
+async def ekos_state() -> dict:
+    """Stato master di Ekos + INDI per il pulsante Attiva/Disattiva."""
+    from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
+    ekos_path = "/KStars/Ekos"
+
+    rc1, raw1 = await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                                  "org.kde.kstars.Ekos.ekosStatus")
+    rc2, raw2 = await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                                  "org.kde.kstars.Ekos.indiStatus")
+    ekos_int = int(raw1) if rc1 == 0 and raw1.lstrip("-").isdigit() else None
+    indi_int = int(raw2) if rc2 == 0 and raw2.lstrip("-").isdigit() else None
+    return {
+        "ekos_status": ekos_int,
+        "ekos_status_label": _EKOS_STATUS_LABELS.get(ekos_int, "unknown"),
+        "indi_status": indi_int,
+        "indi_status_label": _EKOS_STATUS_LABELS.get(indi_int, "unknown"),
+        "active": _label_active(ekos_int, indi_int),
+    }
+
+
+@router.post("/ekos_start")
+async def ekos_start() -> dict:
+    """Avvia Ekos col profilo attivo (= quadratino Setup di Ekos, modalità ON)."""
+    from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
+    rc, raw = await _dbus_call(EKOS_DBUS_SERVICE, "/KStars/Ekos",
+                                "org.kde.kstars.Ekos.start")
+    # Q_NOREPLY: rc=0 quasi sempre, comportamento "fire and forget".
+    return {"ok": rc == 0, "raw": raw}
+
+
+@router.post("/ekos_stop")
+async def ekos_stop() -> dict:
+    """Ferma Ekos (= quadratino Setup di Ekos, modalità OFF)."""
+    from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
+    rc, raw = await _dbus_call(EKOS_DBUS_SERVICE, "/KStars/Ekos",
+                                "org.kde.kstars.Ekos.stop")
+    return {"ok": rc == 0, "raw": raw}
+
+
+@router.post("/ekos_connect_devices")
+async def ekos_connect_devices() -> dict:
+    """Connetti tutti i driver INDI del profilo. Equivalente a 'Connetti'
+    nel pannello Setup di Ekos (icona spina)."""
+    from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
+    rc, raw = await _dbus_call(EKOS_DBUS_SERVICE, "/KStars/Ekos",
+                                "org.kde.kstars.Ekos.connectDevices")
+    return {"ok": rc == 0, "raw": raw}
+
+
+@router.post("/ekos_disconnect_devices")
+async def ekos_disconnect_devices() -> dict:
+    """Disconnetti tutti i driver INDI del profilo."""
+    from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
+    rc, raw = await _dbus_call(EKOS_DBUS_SERVICE, "/KStars/Ekos",
+                                "org.kde.kstars.Ekos.disconnectDevices")
+    return {"ok": rc == 0, "raw": raw}
+
+
+@router.post("/ekos_toggle")
+async def ekos_toggle() -> dict:
+    """Toggle automatico: legge lo stato, poi start/stop in base a quello.
+    Questo è ciò che usa il pulsante Attiva/Disattiva della Dashboard."""
+    import asyncio as _asyncio
+    from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
+    ekos_path = "/KStars/Ekos"
+
+    rc1, raw1 = await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                                  "org.kde.kstars.Ekos.ekosStatus")
+    rc2, raw2 = await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                                  "org.kde.kstars.Ekos.indiStatus")
+    ekos_int = int(raw1) if rc1 == 0 and raw1.lstrip("-").isdigit() else None
+    indi_int = int(raw2) if rc2 == 0 and raw2.lstrip("-").isdigit() else None
+    cur = _label_active(ekos_int, indi_int)
+
+    if cur == "active":
+        # Tutto su → spegni
+        # Prima disconnect dei device (rispetta l'ordine pulito di Ekos),
+        # poi stop. Doppia chiamata per il pattern Q_NOREPLY race-safe.
+        await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                          "org.kde.kstars.Ekos.disconnectDevices")
+        await _asyncio.sleep(0.20)
+        await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                          "org.kde.kstars.Ekos.stop")
+        action = "stopping"
+    else:
+        # Tutto giù o errore → accendi.
+        # start() di Ekos avvia INDI + apre i driver. Se il profilo ha
+        # autoConnect=true, anche connectDevices è implicito.
+        await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                          "org.kde.kstars.Ekos.start")
+        await _asyncio.sleep(0.30)
+        # Ridondante ma robusto: forziamo anche il connect dei device,
+        # nel caso il profilo non sia in autoConnect.
+        await _dbus_call(EKOS_DBUS_SERVICE, ekos_path,
+                          "org.kde.kstars.Ekos.connectDevices")
+        action = "starting"
+    return {"ok": True, "from": cur, "action": action}

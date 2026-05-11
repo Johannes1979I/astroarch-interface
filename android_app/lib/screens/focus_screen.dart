@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -26,8 +27,8 @@ class _FocusScreenState extends State<FocusScreen> {
 
   Future<void> _safe(Future Function() fn, String okMsg) async {
     try { await fn(); if (mounted) showSnack(context, okMsg); }
-    on ApiException catch (e) { if (mounted) showSnack(context, 'Errore: ${e.body}', error: true); }
-    catch (e) { if (mounted) showSnack(context, 'Errore: $e', error: true); }
+    on ApiException catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true); }
+    catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true); }
   }
 
   Future<void> _move(int steps, String direction) async {
@@ -46,11 +47,11 @@ class _FocusScreenState extends State<FocusScreen> {
       _pollTimer?.cancel();
       _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollStatus());
       setState(() {});
-      if (mounted) showSnack(context, 'Autofocus avviato');
+      if (mounted) showSnack(context, 'Autofocus avviato'.tr(context));
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, 'Errore: ${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
     } catch (e) {
-      if (mounted) showSnack(context, 'Errore: $e', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
   }
 
@@ -72,7 +73,7 @@ class _FocusScreenState extends State<FocusScreen> {
     final s = context.read<AppState>();
     try {
       await s.api!.focuserAutofocusAbort(_runId!);
-      if (mounted) showSnack(context, 'Abort autofocus');
+      if (mounted) showSnack(context, 'Abort autofocus'.tr(context));
     } catch (_) {}
   }
 
@@ -93,9 +94,9 @@ class _FocusScreenState extends State<FocusScreen> {
     final t = (propValue(temp, 'TEMPERATURE') as num?)?.toDouble();
 
     return Scaffold(
-      appBar: AppBar(title: Text(f == null ? 'Focus' : 'Focus · $f')),
+      appBar: AppBar(title: Text(f == null ? 'Focus'.tr(context) : '${'Focus'.tr(context)} · $f')),
       body: f == null
-          ? Center(child: Text('Nessun focuser connesso', style: TextStyle(color: T.muted(context))))
+          ? Center(child: Text('Nessun focuser connesso'.tr(context), style: TextStyle(color: T.muted(context))))
           : ListView(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 80),
               children: [
@@ -103,17 +104,17 @@ class _FocusScreenState extends State<FocusScreen> {
                   shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: 3, mainAxisSpacing: 6, crossAxisSpacing: 6, childAspectRatio: 1.7,
                   children: [
-                    StatusCard(header: 'POSITION', value: position?.toString() ?? '—',
-                        subtitle: maxPos == null ? null : 'max ${maxPos.toInt()}'),
-                    StatusCard(header: 'TEMP',
-                        value: t == null ? '—' : '${t.toStringAsFixed(1)}°', subtitle: 'sensor'),
-                    StatusCard(header: 'STATE', value: pos?['state'] ?? '—',
-                        subtitle: pos?['state'] == 'Busy' ? 'moving' : 'idle',
+                    StatusCard(header: 'POSITION'.tr(context), value: position?.toString() ?? '—',
+                        subtitle: maxPos == null ? null : '${'max'.tr(context)} ${maxPos.toInt()}'),
+                    StatusCard(header: 'TEMP'.tr(context),
+                        value: t == null ? '—' : '${t.toStringAsFixed(1)}°', subtitle: 'sensor'.tr(context)),
+                    StatusCard(header: 'STATE'.tr(context), value: pos?['state'] ?? '—',
+                        subtitle: pos?['state'] == 'Busy' ? 'moving'.tr(context) : 'idle'.tr(context),
                         badgeColor: pos?['state'] == 'Busy' ? T.accent(context) : T.muted(context),
                         badgeText: pos?['state'] == 'Busy' ? 'mov' : 'idle'),
                   ],
                 ),
-                const SectionLabel('Movimento manuale (rel)'),
+                SectionLabel('Movimento manuale (rel)'.tr(context)),
                 Row(children: [
                   Expanded(child: GhostButton(label: '−1000', small: true, onPressed: () => _move(1000, 'in'))),
                   const SizedBox(width: 4),
@@ -129,34 +130,34 @@ class _FocusScreenState extends State<FocusScreen> {
                   const SizedBox(width: 4),
                   Expanded(child: GhostButton(label: '+1000', small: true, onPressed: () => _move(1000, 'out'))),
                 ]),
-                const SectionLabel('Posizione assoluta'),
+                SectionLabel('Posizione assoluta'.tr(context)),
                 _absInput(s, position),
-                const SectionLabel('Autofocus iterativo'),
+                SectionLabel('Autofocus iterativo'.tr(context)),
                 _autofocusParams(),
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(child: PrimaryButton(
-                    label: _isAfRunning() ? 'IN CORSO…' : 'AVVIA AUTOFOCUS',
+                    label: _isAfRunning() ? 'IN CORSO…'.tr(context) : 'AVVIA AUTOFOCUS'.tr(context),
                     icon: Icons.center_focus_strong,
                     onPressed: _isAfRunning() ? null : () => _startAutofocus(s),
                   )),
                   const SizedBox(width: 8),
                   Expanded(child: GhostButton(
-                    label: 'ABORT', icon: Icons.stop, danger: true,
+                    label: 'ABORT'.tr(context), icon: Icons.stop, danger: true,
                     onPressed: _isAfRunning() ? _abortAutofocus : null,
                   )),
                 ]),
                 if (_runStatus != null) ...[
                   const SizedBox(height: 12),
                   _runStatusCard(),
-                  const SectionLabel('V-Curve'),
+                  SectionLabel('V-Curve'.tr(context)),
                   _vCurveChart(),
                 ],
-                const SectionLabel('Manuale rapido'),
+                SectionLabel('Manuale rapido'.tr(context)),
                 Row(children: [
                   Expanded(child: GhostButton(
-                    label: 'ABORT motion', icon: Icons.stop, danger: true,
-                    onPressed: () => _safe(() => s.api!.focuserAbort(), 'Abort'),
+                    label: 'ABORT motion'.tr(context), icon: Icons.stop, danger: true,
+                    onPressed: () => _safe(() => s.api!.focuserAbort(), 'Abort'.tr(context)),
                   )),
                 ]),
               ],
@@ -172,16 +173,16 @@ class _FocusScreenState extends State<FocusScreen> {
   Widget _autofocusParams() {
     return Column(children: [
       Row(children: [
-        Expanded(child: _slider('Step size', _stepSize.toDouble(), 5, 500,
+        Expanded(child: _slider('Step size'.tr(context), _stepSize.toDouble(), 5, 500,
             (v) => setState(() => _stepSize = v.toInt()), formatter: (v) => v.toStringAsFixed(0))),
       ]),
       Row(children: [
-        Expanded(child: _slider('N step (dispari)', _nSteps.toDouble(), 5, 21,
+        Expanded(child: _slider('N step (dispari)'.tr(context), _nSteps.toDouble(), 5, 21,
             (v) => setState(() => _nSteps = (v.toInt() % 2 == 0 ? v.toInt() + 1 : v.toInt())),
             formatter: (v) => '${v.toInt()}')),
       ]),
       Row(children: [
-        Expanded(child: _slider('Esposizione (s)', _exposureSec, 0.5, 10,
+        Expanded(child: _slider('Esposizione (s)'.tr(context), _exposureSec, 0.5, 10,
             (v) => setState(() => _exposureSec = v),
             formatter: (v) => '${v.toStringAsFixed(1)}s')),
       ]),
@@ -240,14 +241,14 @@ class _FocusScreenState extends State<FocusScreen> {
           Icon(st == 'running' ? Icons.sync : (st == 'done' ? Icons.check_circle : Icons.info),
               color: color, size: 16),
           const SizedBox(width: 6),
-          Text('Run: $st', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+          Text('${'Run'.tr(context)}: $st', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
           const Spacer(),
           Text('$stepIdx/$n', style: TextStyle(color: T.muted(context), fontFamily: 'monospace')),
         ]),
         if (r['best_pos'] != null) Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text(
-            'Best position: ${r['best_pos']} (HFR ${(r['best_hfr'] as num).toStringAsFixed(2)})',
+            '${'Best position'.tr(context)}: ${r['best_pos']} (HFR ${(r['best_hfr'] as num).toStringAsFixed(2)})',
             style: TextStyle(color: T.ok(context), fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ),
@@ -256,7 +257,7 @@ class _FocusScreenState extends State<FocusScreen> {
           child: Text('⚠ ${r['error']}', style: TextStyle(color: T.err(context), fontSize: 11)),
         ),
         const SizedBox(height: 4),
-        Text('${samples.length} sample raccolti',
+        Text('${samples.length} ${'sample raccolti'.tr(context)}',
             style: TextStyle(color: T.muted(context), fontSize: 11)),
       ]),
     );
@@ -271,7 +272,7 @@ class _FocusScreenState extends State<FocusScreen> {
           color: T.panel(context), borderRadius: BorderRadius.circular(10),
           border: Border.all(color: T.line(context)),
         ),
-        child: Center(child: Text('No data yet', style: TextStyle(color: T.muted(context)))),
+        child: Center(child: Text('No data yet'.tr(context), style: TextStyle(color: T.muted(context)))),
       );
     }
     final spots = <FlSpot>[];
@@ -286,7 +287,7 @@ class _FocusScreenState extends State<FocusScreen> {
       if (h > maxHfr) maxHfr = h;
     }
     if (spots.isEmpty) {
-      return SizedBox(height: 180, child: Center(child: Text('No HFR detected',
+      return SizedBox(height: 180, child: Center(child: Text('No HFR detected'.tr(context),
           style: TextStyle(color: T.muted(context)))));
     }
     final bestPos = (_runStatus?['best_pos'] as num?)?.toDouble();
@@ -329,17 +330,17 @@ class _FocusScreenState extends State<FocusScreen> {
     return Row(children: [
       Expanded(child: TextField(
         controller: ctl, keyboardType: TextInputType.number,
-        decoration: const InputDecoration(labelText: 'Posizione', isDense: true),
+        decoration: InputDecoration(labelText: 'Posizione'.tr(context), isDense: true),
       )),
       const SizedBox(width: 8),
       SizedBox(width: 100, child: PrimaryButton(label: 'GO', icon: Icons.send, small: true,
           onPressed: () async {
             final v = int.tryParse(ctl.text);
             if (v == null) {
-              showSnack(context, 'Numero non valido', error: true);
+              showSnack(context, 'Numero non valido'.tr(context), error: true);
               return;
             }
-            await _safe(() => s.api!.focuserAbs(v), 'Vai a $v');
+            await _safe(() => s.api!.focuserAbs(v), '${'Vai a'.tr(context)} $v');
           })),
     ]);
   }

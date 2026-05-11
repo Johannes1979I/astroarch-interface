@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -16,8 +17,8 @@ class GuideScreen extends StatefulWidget {
 class _GuideScreenState extends State<GuideScreen> {
   Future<void> _safe(Future Function() fn, String msg) async {
     try { await fn(); if (mounted) showSnack(context, msg); }
-    on ApiException catch (e) { if (mounted) showSnack(context, 'Errore: ${e.body}', error: true); }
-    catch (e) { if (mounted) showSnack(context, 'Errore: $e', error: true); }
+    on ApiException catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true); }
+    catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true); }
   }
 
   @override
@@ -39,7 +40,7 @@ class _GuideScreenState extends State<GuideScreen> {
         title: Row(children: [
         const LiveDot(),
         const SizedBox(width: 10),
-        Text('Guide · PHD2'),
+        Text('${'Guide'.tr(context)} · PHD2'),
         const Spacer(),
         Text(connected ? st : 'offline',
             style: TextStyle(color: connected ? T.ok(context) : T.muted(context), fontSize: 12)),
@@ -49,7 +50,7 @@ class _GuideScreenState extends State<GuideScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'PHD2 non connesso al bridge.\nAvvia PHD2 sul RPi e abilita Server (porta 4400).',
+                  'PHD2 non connesso al bridge.\nAvvia PHD2 sul RPi e abilita Server (porta 4400).'.tr(context),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: T.muted(context)),
                 ),
@@ -64,47 +65,47 @@ class _GuideScreenState extends State<GuideScreen> {
                   crossAxisCount: 2, mainAxisSpacing: 8, crossAxisSpacing: 8,
                   childAspectRatio: 1.7,
                   children: [
-                    StatusCard(header: 'RMS TOTAL',
+                    StatusCard(header: 'RMS TOTAL'.tr(context),
                         value: rms == null ? '—' : '${rms.toStringAsFixed(2)}″',
                         subtitle: 'target < 1.0″'),
                     StatusCard(header: 'SNR',
                         value: snr == null ? '—' : snr.toStringAsFixed(0),
-                        subtitle: 'star quality'),
-                    StatusCard(header: 'RA RMS',
+                        subtitle: 'star quality'.tr(context)),
+                    StatusCard(header: 'RA RMS'.tr(context),
                         value: raRms == null ? '—' : '${raRms.toStringAsFixed(2)}″'),
-                    StatusCard(header: 'DEC RMS',
+                    StatusCard(header: 'DEC RMS'.tr(context),
                         value: decRms == null ? '—' : '${decRms.toStringAsFixed(2)}″'),
                   ],
                 ),
-                const SectionLabel('Errore inseguimento'),
+                SectionLabel('Errore inseguimento'.tr(context)),
                 _chart(s),
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(child: PrimaryButton(label: 'START', icon: Icons.play_arrow,
-                      onPressed: () => _safe(() => s.api!.guideStart(), 'Guide started'))),
+                      onPressed: () => _safe(() => s.api!.guideStart(), 'Guide started'.tr(context)))),
                   const SizedBox(width: 8),
                   Expanded(child: GhostButton(label: 'STOP', icon: Icons.stop,
-                      onPressed: () => _safe(() => s.api!.guideStop(), 'Stopped'))),
+                      onPressed: () => _safe(() => s.api!.guideStop(), 'Stopped'.tr(context)))),
                 ]),
                 const SizedBox(height: 6),
                 Row(children: [
                   Expanded(child: GhostButton(label: 'DITHER', icon: Icons.scatter_plot,
-                      onPressed: () => _safe(() => s.api!.guideDither(amount: 3), 'Dither 3px'))),
+                      onPressed: () => _safe(() => s.api!.guideDither(amount: 3), 'Dither 3px'.tr(context)))),
                   const SizedBox(width: 8),
                   Expanded(child: GhostButton(label: 'FIND STAR',
-                      onPressed: () => _safe(() => s.api!.guideFindStar(), 'Find star'))),
+                      onPressed: () => _safe(() => s.api!.guideFindStar(), 'Find star'.tr(context)))),
                 ]),
                 const SizedBox(height: 6),
                 Row(children: [
                   Expanded(child: GhostButton(label: 'CALIBRATE',
                       icon: Icons.adjust,
                       onPressed: () => _safe(() => s.api!.guideCalibrate(),
-                          'Calibration avviata (richiede ~2 min)'))),
+                          'Calibration avviata (richiede ~2 min)'.tr(context)))),
                   const SizedBox(width: 8),
                   Expanded(child: GhostButton(label: 'CLEAR CAL',
-                      onPressed: () => _safe(() => s.api!.guideClearCalibration(), 'Cal cleared'))),
+                      onPressed: () => _safe(() => s.api!.guideClearCalibration(), 'Cal cleared'.tr(context)))),
                 ]),
-                const SectionLabel('Equipaggiamento PHD2'),
+                SectionLabel('Equipaggiamento PHD2'.tr(context)),
                 _equipmentCard(s),
               ],
             ),
@@ -132,11 +133,11 @@ class _GuideScreenState extends State<GuideScreen> {
         ]),
         if (live['calibrated'] == true) Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Text('● Calibrated', style: TextStyle(color: T.ok(context), fontSize: 11)),
+          child: Text('● ${'Calibrated'.tr(context)}', style: TextStyle(color: T.ok(context), fontSize: 11)),
         ),
         if (live['settling'] == true) Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: Text('● Settling…', style: TextStyle(color: T.warn(context), fontSize: 11)),
+          child: Text('● ${'Settling…'.tr(context)}', style: TextStyle(color: T.warn(context), fontSize: 11)),
         ),
       ]),
     );
@@ -151,7 +152,7 @@ class _GuideScreenState extends State<GuideScreen> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: T.line(context)),
         ),
-        child: Center(child: Text('In attesa di dati guide…', style: TextStyle(color: T.muted(context), fontSize: 12))),
+        child: Center(child: Text('In attesa di dati guide…'.tr(context), style: TextStyle(color: T.muted(context), fontSize: 12))),
       );
     }
     final points = s.phd2History;
