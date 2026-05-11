@@ -150,25 +150,43 @@ _EKOS_STATUS_LABELS = {
 }
 
 
-def _label_active(ekos_int: int | None, indi_int: int | None) -> str:
+def _label_active(ekos_int: int | None, indi_int: int | None,
+                  connected_devices: int = 0) -> str:
     """Restituisce uno dei label semplici per la UI:
     'active' = tutto su, 'inactive' = tutto giù, 'pending' = transizione,
-    'error' = errore, 'unknown' = non leggibile."""
-    if ekos_int is None and indi_int is None:
+    'error' = errore, 'unknown' = non leggibile.
+
+    NOTA IMPORTANTE: `indiStatus` di Ekos resta a 1=Pending per sempre se
+    UNO solo dei driver del profilo non riesce a connettersi (es. XAGYL
+    Wheel offline, Weather Watcher offline). Quindi NON possiamo usarlo
+    come hard gate per "tutto OK".
+    Segnale primario:
+      • ekosStatus == 2 (Started)
+      • il bridge vede device INDI connessi (almeno 1)
+    """
+    if ekos_int is None:
         return "unknown"
-    if ekos_int == 3 or indi_int == 3:
+    # 3 = Error
+    if ekos_int == 3:
         return "error"
-    if ekos_int == 1 or indi_int == 1:
+    if ekos_int == 2:
+        # Ekos avviato: se vediamo device connessi via INDI, è attivo.
+        if connected_devices > 0:
+            return "active"
+        # Avviato ma ancora nessun device → fase di apertura driver.
         return "pending"
-    # active solo se ekos started E indi started
-    if ekos_int == 2 and indi_int == 2:
-        return "active"
+    if ekos_int == 1:
+        return "pending"
+    # ekos_int == 0 = Idle (fermo)
     return "inactive"
 
 
 @router.get("/ekos_state")
-async def ekos_state() -> dict:
-    """Stato master di Ekos + INDI per il pulsante Attiva/Disattiva."""
+async def ekos_state(bridge: Bridge = Depends(get_bridge)) -> dict:
+    """Stato master di Ekos + INDI per il pulsante Attiva/Disattiva.
+    Combina lo status DBus di Ekos con il numero di device che il bridge
+    vede connessi sull'INDI server: questo è più affidabile di indiStatus
+    perché ignora i driver opzionali che falliscono."""
     from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
     ekos_path = "/KStars/Ekos"
 
@@ -178,12 +196,21 @@ async def ekos_state() -> dict:
                                   "org.kde.kstars.Ekos.indiStatus")
     ekos_int = int(raw1) if rc1 == 0 and raw1.lstrip("-").isdigit() else None
     indi_int = int(raw2) if rc2 == 0 and raw2.lstrip("-").isdigit() else None
+
+    # Conta device INDI visibili e online dal bridge.
+    try:
+        devices = await bridge.state.list_devices()
+        n_devices = len(devices)
+    except Exception:
+        n_devices = 0
+
     return {
         "ekos_status": ekos_int,
         "ekos_status_label": _EKOS_STATUS_LABELS.get(ekos_int, "unknown"),
         "indi_status": indi_int,
         "indi_status_label": _EKOS_STATUS_LABELS.get(indi_int, "unknown"),
-        "active": _label_active(ekos_int, indi_int),
+        "connected_devices": n_devices,
+        "active": _label_active(ekos_int, indi_int, n_devices),
     }
 
 
@@ -226,7 +253,7 @@ async def ekos_disconnect_devices() -> dict:
 
 
 @router.post("/ekos_toggle")
-async def ekos_toggle() -> dict:
+async def ekos_toggle(bridge: Bridge = Depends(get_bridge)) -> dict:
     """Toggle automatico: legge lo stato, poi start/stop in base a quello.
     Questo è ciò che usa il pulsante Attiva/Disattiva della Dashboard."""
     import asyncio as _asyncio
@@ -239,7 +266,11 @@ async def ekos_toggle() -> dict:
                                   "org.kde.kstars.Ekos.indiStatus")
     ekos_int = int(raw1) if rc1 == 0 and raw1.lstrip("-").isdigit() else None
     indi_int = int(raw2) if rc2 == 0 and raw2.lstrip("-").isdigit() else None
-    cur = _label_active(ekos_int, indi_int)
+    try:
+        n_devices = len(await bridge.state.list_devices())
+    except Exception:
+        n_devices = 0
+    cur = _label_active(ekos_int, indi_int, n_devices)
 
     if cur == "active":
         # Tutto su → spegni
