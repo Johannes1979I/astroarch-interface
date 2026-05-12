@@ -135,6 +135,8 @@ class L10n {
     'Scansiona QR dalla Dashboard': 'Scan QR from Dashboard',
     'SCANSIONA QR DALLA DASHBOARD': 'SCAN QR FROM DASHBOARD',
     'Inserisci manualmente': 'Enter manually',
+    'es. 100.x.y.z (Tailscale)': 'e.g. 100.x.y.z (Tailscale)',
+    'es. 8765': 'e.g. 8765',
     'Connetti al bridge': 'Connect to bridge',
     'Bridge non raggiungibile': 'Bridge unreachable',
     'Token non valido': 'Invalid token',
@@ -427,6 +429,8 @@ class L10n {
     'M 31, NGC 7000, …': 'M 31, NGC 7000, …',
 
     // ==== GUIDE =============================================================
+    'PHD2: nessuna stella selezionata. Premi FIND STAR.':
+        'PHD2: no star selected. Press FIND STAR.',
     'RMS Tot': 'Total RMS',
     'Avvia guida': 'Start guiding',
     'Ferma guida': 'Stop guiding',

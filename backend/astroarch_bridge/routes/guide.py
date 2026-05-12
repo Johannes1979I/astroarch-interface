@@ -140,3 +140,99 @@ async def profile(bridge: Bridge = Depends(get_bridge)) -> dict:
     except Exception:
         pass
     return info
+
+
+@router.get("/star_image")
+async def star_image(
+    fmt: str = "json", size: int = 0,
+    bridge: Bridge = Depends(get_bridge),
+):
+    """Ritorna l'immagine del riquadro intorno alla stella di guida di PHD2.
+
+    PHD2 espone `get_star_image` via JSON-RPC che ritorna:
+      {
+        "frame": int,                  # numero frame
+        "width": int, "height": int,   # dimensioni del crop in pixel
+        "star_pos": [x, y],            # posizione stella nel crop
+        "pixels": "<base64-rawdata>"   # array di uint16 little-endian
+      }
+    Lo riconvertiamo in PNG 8-bit stretchato (auto-stretch in stile PI)
+    così la app può mostrarlo direttamente con <Image.memory>.
+
+    Query:
+      fmt:  "json" (default, ritorna anche PNG in base64) o "png" (binary)
+      size: opzionale, suggerimento dimensione (ignorato da PHD2 di solito)
+    """
+    import base64
+    import io
+    import struct
+    import numpy as np
+    from fastapi.responses import Response
+    from ..images.processor import _percentile_stretch
+
+    params: list = []
+    if size > 0:
+        params = [size]
+    try:
+        res = await bridge.phd2.call("get_star_image", params, timeout=5.0)
+    except Phd2RpcError as e:
+        # PHD2 ritorna errore se non c'è stella selezionata o se è in modalità
+        # incompatibile (es. looping ma senza star)
+        raise HTTPException(status_code=409,
+                            detail=f"PHD2: {e}")
+    except (ConnectionError, Exception) as e:
+        raise HTTPException(status_code=503, detail=f"PHD2 not reachable: {e}")
+
+    if not isinstance(res, dict) or "pixels" not in res:
+        raise HTTPException(status_code=502,
+                            detail=f"PHD2 get_star_image bad payload: {res}")
+
+    w = int(res.get("width", 0))
+    h = int(res.get("height", 0))
+    if w <= 0 or h <= 0:
+        raise HTTPException(status_code=502, detail="PHD2: invalid image size")
+
+    # pixels è base64 di un array di uint16 (PHD2 convention)
+    try:
+        raw = base64.b64decode(res["pixels"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"PHD2 b64 decode: {e}")
+
+    if len(raw) != w * h * 2:
+        raise HTTPException(status_code=502,
+                            detail=f"PHD2: pixel buffer len {len(raw)} != {w*h*2}")
+
+    arr = np.frombuffer(raw, dtype="<u2").reshape((h, w)).astype(np.float64)
+
+    # Stretch con lo stesso algoritmo che usiamo per i frame Ekos.
+    stretched = _percentile_stretch(arr)
+
+    # Crea PNG via PIL
+    try:
+        from PIL import Image
+        img = Image.fromarray(stretched, mode="L").convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=False)
+        png_bytes = buf.getvalue()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PNG encode: {e}")
+
+    star_pos = res.get("star_pos") or [w / 2.0, h / 2.0]
+    payload = {
+        "frame": res.get("frame"),
+        "width": w,
+        "height": h,
+        "star_x": float(star_pos[0]) if len(star_pos) > 0 else None,
+        "star_y": float(star_pos[1]) if len(star_pos) > 1 else None,
+    }
+
+    if fmt.lower() == "png":
+        return Response(content=png_bytes, media_type="image/png",
+                        headers={"Cache-Control": "no-store",
+                                 "X-Star-X": str(payload["star_x"] or ""),
+                                 "X-Star-Y": str(payload["star_y"] or ""),
+                                 "X-Width": str(w),
+                                 "X-Height": str(h),
+                                 "X-Frame": str(payload["frame"] or "")})
+    payload["png_base64"] = base64.b64encode(png_bytes).decode("ascii")
+    return payload

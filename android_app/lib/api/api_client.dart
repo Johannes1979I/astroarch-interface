@@ -390,6 +390,11 @@ class ApiClient {
   Future<void> guideFindStar() => post('/api/guide/find_star');
   Future<Map<String, dynamic>> guideProfile() => get('/api/guide/profile');
 
+  /// Riquadro intorno alla stella di guida via PHD2 (get_star_image).
+  /// Ritorna {frame, width, height, star_x, star_y, png_base64}.
+  /// Lancia ApiException(409) se PHD2 non ha una stella selezionata.
+  Future<Map<String, dynamic>> guideStarImage() => get('/api/guide/star_image');
+
   // Observatory
   Future<Map<String, dynamic>> observatoryStatus() => get('/api/observatory/status');
   Future<void> domeShutter(String device, bool open) =>

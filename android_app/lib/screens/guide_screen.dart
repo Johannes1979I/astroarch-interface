@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
@@ -59,6 +62,10 @@ class _GuideScreenState extends State<GuideScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 80),
               children: [
+                // Vista stella di guida — il riquadro con crosshair che si
+                // vede dentro PHD2. Si aggiorna automaticamente.
+                const _GuideStarImageCard(),
+                const SizedBox(height: 10),
                 GridView.count(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -199,4 +206,175 @@ class _GuideScreenState extends State<GuideScreen> {
       ),
     );
   }
+}
+
+
+/// Widget che mostra il riquadro con la stella di guida intercettato da PHD2.
+/// Polling ogni 1500 ms (PHD2 espone una nuova frame ~ogni 1-3s di solito).
+/// Se PHD2 non ha ancora una stella selezionata (es. utente non ha fatto
+/// "Find Star" / "Calibrate"), mostra placeholder con istruzioni.
+class _GuideStarImageCard extends StatefulWidget {
+  const _GuideStarImageCard();
+  @override
+  State<_GuideStarImageCard> createState() => _GuideStarImageCardState();
+}
+
+class _GuideStarImageCardState extends State<_GuideStarImageCard> {
+  Timer? _timer;
+  Uint8List? _png;
+  int? _w, _h;
+  double? _starX, _starY;
+  int? _frame;
+  String? _err;
+  bool _inflight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick();
+    _timer = Timer.periodic(const Duration(milliseconds: 1500), (_) => _tick());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _tick() async {
+    if (_inflight) return; // evita overlap se la rete è lenta
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    _inflight = true;
+    try {
+      final j = await s.api!.guideStarImage();
+      final b64 = j['png_base64'] as String?;
+      if (b64 == null) throw Exception('missing png');
+      final bytes = base64.decode(b64);
+      if (!mounted) return;
+      setState(() {
+        _png = bytes;
+        _w = (j['width'] as num?)?.toInt();
+        _h = (j['height'] as num?)?.toInt();
+        _starX = (j['star_x'] as num?)?.toDouble();
+        _starY = (j['star_y'] as num?)?.toDouble();
+        _frame = (j['frame'] as num?)?.toInt();
+        _err = null;
+      });
+    } on ApiException catch (e) {
+      // 409 = PHD2 senza stella selezionata o app_state non compatibile
+      if (mounted) setState(() => _err = e.status == 409
+          ? 'PHD2: nessuna stella selezionata. Premi FIND STAR.'.tr(context)
+          : '${'Errore: '.tr(context)}${e.body}');
+    } catch (e) {
+      if (mounted) setState(() => _err = e.toString());
+    } finally {
+      _inflight = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: T.line(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: AspectRatio(
+        aspectRatio: 1.6,
+        child: Stack(fit: StackFit.expand, children: [
+          if (_png != null)
+            InteractiveViewer(
+              minScale: 1, maxScale: 6,
+              child: LayoutBuilder(builder: (ctx, constraints) {
+                // Disegna il PNG ridimensionato al riquadro mantenendo
+                // l'aspect ratio del crop di PHD2. Calcolo scale per
+                // posizionare il crosshair sul punto giusto.
+                final cw = constraints.maxWidth;
+                final ch = constraints.maxHeight;
+                final iw = (_w ?? 1).toDouble();
+                final ih = (_h ?? 1).toDouble();
+                final scale = (cw / iw < ch / ih) ? cw / iw : ch / ih;
+                final dispW = iw * scale, dispH = ih * scale;
+                final offX = (cw - dispW) / 2, offY = (ch - dispH) / 2;
+                final crossX = _starX == null
+                    ? null : offX + _starX! * scale;
+                final crossY = _starY == null
+                    ? null : offY + _starY! * scale;
+                return Stack(children: [
+                  Center(child: Image.memory(_png!,
+                      fit: BoxFit.contain, gaplessPlayback: true,
+                      filterQuality: FilterQuality.medium)),
+                  if (crossX != null && crossY != null)
+                    Positioned(
+                      left: crossX - 22, top: crossY - 22,
+                      width: 44, height: 44,
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _CrosshairPainter(color: T.accent(context)),
+                        ),
+                      ),
+                    ),
+                ]);
+              }),
+            )
+          else if (_err != null)
+            Center(child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                Icon(Icons.search_off, color: T.muted(context), size: 28),
+                const SizedBox(height: 8),
+                Text(_err!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: T.muted(context), fontSize: 12)),
+              ]),
+            ))
+          else
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          // HUD top-left: frame + crop size
+          if (_png != null && _w != null && _h != null) Positioned(
+            top: 8, left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: Colors.black54,
+                  borderRadius: BorderRadius.circular(6)),
+              child: Text(
+                '★ ${_starX?.toStringAsFixed(1) ?? "—"}, '
+                '${_starY?.toStringAsFixed(1) ?? "—"} · '
+                '${_w}×$_h · #${_frame ?? "—"}',
+                style: const TextStyle(color: Colors.white,
+                    fontFamily: 'monospace', fontSize: 9),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _CrosshairPainter extends CustomPainter {
+  final Color color;
+  _CrosshairPainter({required this.color});
+  @override
+  void paint(Canvas c, Size s) {
+    final cx = s.width / 2, cy = s.height / 2;
+    final r = s.width * 0.35;
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    // Cerchio centrale
+    c.drawCircle(Offset(cx, cy), r, p);
+    // Tick orizzontale/verticale
+    c.drawLine(Offset(0, cy), Offset(cx - r * 0.5, cy), p);
+    c.drawLine(Offset(cx + r * 0.5, cy), Offset(s.width, cy), p);
+    c.drawLine(Offset(cx, 0), Offset(cx, cy - r * 0.5), p);
+    c.drawLine(Offset(cx, cy + r * 0.5), Offset(cx, s.height), p);
+  }
+  @override
+  bool shouldRepaint(covariant _CrosshairPainter old) => old.color != color;
 }

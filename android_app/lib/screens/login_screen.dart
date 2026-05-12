@@ -115,14 +115,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _host,
                   keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(hintText: '100.74.22.40'),
+                  decoration: InputDecoration(
+                    hintText: 'es. 100.x.y.z (Tailscale)'.tr(context),
+                    // Hint grigia chiara per non sembrare un valore reale
+                    hintStyle: TextStyle(
+                        color: T.muted(context).withValues(alpha: 0.5),
+                        fontStyle: FontStyle.italic),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _label('PORTA'),
                 TextField(
                   controller: _port,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(hintText: '8765'),
+                  decoration: InputDecoration(
+                    hintText: 'es. 8765'.tr(context),
+                    hintStyle: TextStyle(
+                        color: T.muted(context).withValues(alpha: 0.5),
+                        fontStyle: FontStyle.italic),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _label('TOKEN'),
