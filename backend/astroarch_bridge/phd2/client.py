@@ -199,9 +199,21 @@ class Phd2Client:
         elif name == "GuideStep":
             self.live["app_state"] = Phd2AppState.GUIDING
             self.live["snr"] = msg.get("SNR")
-            # PHD2 non manda RMS direttamente: lo calcoliamo come |drift| istantaneo ?
-            # Manteniamo RMS inviato in eventi GuidingStats (alcune build), altrimenti restano None.
             self.live["star_lost"] = False
+            # IMPORTANTE: PHD2 manda RADistanceRaw / DECDistanceRaw in
+            # arcsec signed AD OGNI frame. Questi sono i campioni che il
+            # GRAFICO di PHD2 plotta sull'asse Y (linea blu = RA, rossa
+            # = DEC). Senza salvarli qui, lo storico nell'app non avrebbe
+            # mai dati per frame e il grafico di inseguimento resterebbe
+            # vuoto (era il bug pre-v0.2.26).
+            self.live["ra_raw"] = msg.get("RADistanceRaw")
+            self.live["dec_raw"] = msg.get("DECDistanceRaw")
+            # Anche durata pulse e star mass per diagnostica avanzata
+            self.live["ra_duration"] = msg.get("RADuration")
+            self.live["dec_duration"] = msg.get("DECDuration")
+            self.live["star_mass"] = msg.get("StarMass")
+            self.live["avg_dist"] = msg.get("AvgDist")
+            self.live["frame"] = msg.get("Frame")
         elif name == "GuidingStats":
             self.live["rms_total"] = msg.get("RMS")
             self.live["rms_ra"] = msg.get("RaRMS")

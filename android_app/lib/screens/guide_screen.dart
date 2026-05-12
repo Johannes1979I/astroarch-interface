@@ -164,60 +164,128 @@ class _GuideScreenState extends State<GuideScreen> {
     );
   }
 
+  /// Grafico di inseguimento stile PHD2: due linee (RA in blu, DEC in
+  /// rosso) con asse Y in arcsec SIGNATO ± e linea di mezzeria a 0.
+  /// I valori plottati sono `ra_raw` / `dec_raw` (= RADistanceRaw /
+  /// DECDistanceRaw che PHD2 manda ad ogni `GuideStep`), che è la
+  /// deflezione istantanea per-frame. NON sono i valori RMS aggregati.
   Widget _chart(AppState s) {
-    if (s.phd2History.isEmpty) {
+    // Filtra solo i punti che hanno effettivamente ra_raw/dec_raw
+    // (escludendo gli eventi di stato senza deflezione, es. StarLost).
+    final pts = s.phd2History.where((p) =>
+        p['ra_raw'] != null || p['dec_raw'] != null).toList();
+
+    if (pts.isEmpty) {
       return Container(
-        height: 130,
+        height: 160,
         decoration: BoxDecoration(
           color: T.panel(context),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: T.line(context)),
         ),
-        child: Center(child: Text('In attesa di dati guide…'.tr(context), style: TextStyle(color: T.muted(context), fontSize: 12))),
+        child: Center(child: Text(
+            'In attesa di dati guide…\n'
+            'Avvia il guiding in PHD2 per vedere il grafico.'.tr(context),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: T.muted(context), fontSize: 12))),
       );
     }
-    final points = s.phd2History;
-    final List<FlSpot> raSpots = [];
-    final List<FlSpot> decSpots = [];
-    for (var i = 0; i < points.length; i++) {
-      final ra = (points[i]['rms_ra'] as num?)?.toDouble() ?? 0;
-      final dec = (points[i]['rms_dec'] as num?)?.toDouble() ?? 0;
+
+    final raSpots = <FlSpot>[];
+    final decSpots = <FlSpot>[];
+    double absMax = 1.0;
+    for (var i = 0; i < pts.length; i++) {
+      final ra = (pts[i]['ra_raw'] as num?)?.toDouble() ?? 0;
+      final dec = (pts[i]['dec_raw'] as num?)?.toDouble() ?? 0;
       raSpots.add(FlSpot(i.toDouble(), ra));
       decSpots.add(FlSpot(i.toDouble(), dec));
+      final a = ra.abs() > dec.abs() ? ra.abs() : dec.abs();
+      if (a > absMax) absMax = a;
     }
+    // Asse Y simmetrico ±absMax (arrotondato in alto a multipli di 0.5″,
+    // minimo ±1.0″ così il grafico non oscilla per micro-variazioni).
+    final yScale = (absMax <= 1.0) ? 1.0
+        : (absMax <= 2.0) ? 2.0
+        : (absMax <= 4.0) ? 4.0
+        : (absMax + 0.5).ceilToDouble();
+
     return Container(
-      height: 160,
-      padding: const EdgeInsets.fromLTRB(8, 14, 14, 6),
+      height: 180,
+      padding: const EdgeInsets.fromLTRB(8, 10, 14, 6),
       decoration: BoxDecoration(
         color: T.panel(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: T.line(context)),
       ),
-      child: LineChart(
-        LineChartData(
-          gridData: const FlGridData(show: false),
-          titlesData: const FlTitlesData(show: false),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: raSpots,
-              isCurved: true,
-              color: T.accent(context),
-              barWidth: 1.5,
-              dotData: const FlDotData(show: false),
+      child: Column(children: [
+        // Legenda + scala
+        Row(children: [
+          Container(width: 10, height: 2, color: T.accent(context)),
+          const SizedBox(width: 4),
+          Text('RA', style: TextStyle(color: T.accent(context),
+              fontSize: 10, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 12),
+          Container(width: 10, height: 2, color: T.accent2(context)),
+          const SizedBox(width: 4),
+          Text('DEC', style: TextStyle(color: T.accent2(context),
+              fontSize: 10, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Text('Y: ±${yScale.toStringAsFixed(1)}″ · ${pts.length} pts',
+              style: TextStyle(color: T.muted(context), fontSize: 10,
+                  fontFamily: 'monospace')),
+        ]),
+        const SizedBox(height: 4),
+        Expanded(child: LineChart(
+          LineChartData(
+            minX: 0, maxX: (raSpots.length - 1).toDouble().clamp(1.0, double.infinity),
+            minY: -yScale, maxY: yScale,
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              horizontalInterval: yScale / 2.0,
+              getDrawingHorizontalLine: (v) => FlLine(
+                color: v.abs() < 1e-6
+                    ? T.muted(context).withValues(alpha: 0.6)
+                    : T.line(context).withValues(alpha: 0.4),
+                strokeWidth: v.abs() < 1e-6 ? 1.0 : 0.5,
+                dashArray: v.abs() < 1e-6 ? null : [2, 4],
+              ),
             ),
-            LineChartBarData(
-              spots: decSpots,
-              isCurved: true,
-              color: T.accent2(context),
-              barWidth: 1.5,
-              dotData: const FlDotData(show: false),
+            titlesData: FlTitlesData(
+              leftTitles: AxisTitles(sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                interval: yScale / 2.0,
+                getTitlesWidget: (v, _) => Text(
+                    v == 0 ? '0' : v.toStringAsFixed(1),
+                    style: TextStyle(color: T.muted(context), fontSize: 9,
+                        fontFamily: 'monospace')),
+              )),
+              rightTitles: const AxisTitles(),
+              topTitles: const AxisTitles(),
+              bottomTitles: const AxisTitles(),
             ),
-          ],
-          minY: 0,
-          maxY: 3,
-        ),
-      ),
+            borderData: FlBorderData(show: false),
+            lineTouchData: const LineTouchData(enabled: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: raSpots,
+                isCurved: false,  // PHD2 usa linee dritte, non interpolate
+                color: T.accent(context),
+                barWidth: 1.3,
+                dotData: const FlDotData(show: false),
+              ),
+              LineChartBarData(
+                spots: decSpots,
+                isCurved: false,
+                color: T.accent2(context),
+                barWidth: 1.3,
+                dotData: const FlDotData(show: false),
+              ),
+            ],
+          ),
+        )),
+      ]),
     );
   }
 }

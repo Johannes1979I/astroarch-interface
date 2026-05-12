@@ -440,6 +440,8 @@ class L10n {
     // ==== GUIDE =============================================================
     'PHD2: nessuna stella selezionata. Premi FIND STAR.':
         'PHD2: no star selected. Press FIND STAR.',
+    'In attesa di dati guide…\nAvvia il guiding in PHD2 per vedere il grafico.':
+        'Waiting for guide data…\nStart guiding in PHD2 to see the chart.',
     'TARGET EKOS': 'EKOS TARGET',
     'Nessun target impostato': 'No target set',
     'Il target è > 30° dalla posizione attuale: probabilmente stantio. '
