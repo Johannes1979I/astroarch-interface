@@ -1,6 +1,9 @@
 """Route /api/guide: PHD2."""
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from ..auth import require_token
@@ -8,6 +11,30 @@ from ..deps import Bridge, get_bridge
 from ..phd2.client import Phd2RpcError
 
 router = APIRouter(prefix="/api/guide", tags=["guide"], dependencies=[Depends(require_token)])
+_logger = logging.getLogger("astroarch_bridge.guide")
+
+
+def _phd2_http_error(op: str, e: BaseException) -> HTTPException:
+    """Mappa eccezioni PHD2 a HTTPException con status code coerenti.
+    Risolve il problema "Internal Server Error" quando PHD2 va in timeout
+    o è in stato strano: invece di lasciar propagare l'eccezione (che
+    diventa 500), ritorniamo 504/503/422 con un detail leggibile."""
+    if isinstance(e, asyncio.TimeoutError):
+        _logger.warning("PHD2 timeout on %s", op)
+        return HTTPException(status_code=504,
+            detail=f"PHD2 timeout su {op}. PHD2 è in stato bloccato? "
+                   f"Verifica sul desktop che il server sia avviato e "
+                   f"che nessun dialog modale stia bloccando.")
+    if isinstance(e, Phd2RpcError):
+        _logger.warning("PHD2 RPC error on %s: %s", op, e)
+        return HTTPException(status_code=422, detail=f"PHD2: {e}")
+    if isinstance(e, ConnectionError):
+        _logger.warning("PHD2 not reachable on %s: %s", op, e)
+        return HTTPException(status_code=503,
+            detail=f"PHD2 non raggiungibile. Avvia PHD2 e abilita il server.")
+    _logger.exception("PHD2 unexpected error on %s", op)
+    return HTTPException(status_code=500,
+        detail=f"Errore inatteso su {op}: {type(e).__name__}: {e}")
 
 
 @router.get("/status")
@@ -29,8 +56,8 @@ async def start(
             settle_time=float(payload.get("settle_time", 10.0)),
             settle_timeout=float(payload.get("settle_timeout", 60.0)),
         )
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise _phd2_http_error("start_guiding", e)
     return {"ok": True, "result": result}
 
 
@@ -38,8 +65,8 @@ async def start(
 async def stop(bridge: Bridge = Depends(get_bridge)) -> dict:
     try:
         await bridge.phd2.stop_capture()
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise _phd2_http_error("stop", e)
     return {"ok": True}
 
 
@@ -56,8 +83,8 @@ async def dither(
             settle_time=float(payload.get("settle_time", 10.0)),
             settle_timeout=float(payload.get("settle_timeout", 60.0)),
         )
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise _phd2_http_error("dither", e)
     return {"ok": True, "result": result}
 
 
@@ -65,8 +92,8 @@ async def dither(
 async def loop_(bridge: Bridge = Depends(get_bridge)) -> dict:
     try:
         await bridge.phd2.loop()
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise _phd2_http_error("loop", e)
     return {"ok": True}
 
 
@@ -78,8 +105,8 @@ async def clear_calibration(
     which = payload.get("which", "Both")
     try:
         await bridge.phd2.clear_calibration(which)
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise _phd2_http_error("clear_calibration", e)
     return {"ok": True}
 
 
@@ -91,31 +118,54 @@ async def pause(
     try:
         await bridge.phd2.set_paused(bool(payload.get("paused", True)),
                                     full=bool(payload.get("full", False)))
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise _phd2_http_error("pause", e)
     return {"ok": True}
 
 
 @router.post("/find_star")
 async def find_star(bridge: Bridge = Depends(get_bridge)) -> dict:
     try:
-        r = await bridge.phd2.call("find_star")
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        r = await bridge.phd2.call("find_star", timeout=30.0)
+    except Exception as e:
+        raise _phd2_http_error("find_star", e)
     return {"ok": True, "result": r}
 
 
 @router.post("/calibrate")
 async def calibrate(bridge: Bridge = Depends(get_bridge)) -> dict:
-    """Avvia calibration completa: clear cal -> guide (forza recalibrate)."""
+    """Avvia calibration completa: clear cal → loop una volta per essere
+    sicuri che ci sia un frame fresco → guide(recalibrate=True).
+
+    Bug fix v0.2.25: prima si chiamava direttamente `guide` senza alcun
+    timeout esteso, e PHD2 a volte impiegava >10s a rispondere
+    all'acknowledgment se la sua stato interno era in transizione
+    (Looping/Stopped/Selected). Risultato: asyncio.TimeoutError →
+    Internal Server Error 500 visibile in app.
+    Adesso:
+      - log esplicito di ogni step
+      - timeout esteso a 30s (l'acknowledgment di "guide" deve essere
+        comunque rapido ma diamo margine)
+      - errori mappati a 504/422/503 con detail leggibili
+    """
+    _logger.info("calibrate: clearing calibration (Both)")
     try:
-        await bridge.phd2.call("clear_calibration", "Both")
+        await bridge.phd2.call("clear_calibration", "Both", timeout=10.0)
+    except Exception as e:
+        raise _phd2_http_error("calibrate (clear_calibration)", e)
+
+    # Piccola pausa: PHD2 ha bisogno di un attimo per processare il clear
+    # prima di poter accettare un nuovo guide command.
+    await asyncio.sleep(0.5)
+
+    _logger.info("calibrate: triggering guide(recalibrate=True)")
+    try:
         await bridge.phd2.call("guide", {
             "settle": {"pixels": 1.5, "time": 10.0, "timeout": 60.0},
             "recalibrate": True,
-        })
-    except (ConnectionError, Phd2RpcError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        }, timeout=30.0)
+    except Exception as e:
+        raise _phd2_http_error("calibrate (guide)", e)
     return {"ok": True}
 
 
@@ -178,10 +228,19 @@ async def star_image(
     except Phd2RpcError as e:
         # PHD2 ritorna errore se non c'è stella selezionata o se è in modalità
         # incompatibile (es. looping ma senza star)
+        raise HTTPException(status_code=409, detail=f"PHD2: {e}")
+    except asyncio.TimeoutError:
+        # Comune: get_star_image durante settling/transitorio. Trattiamo
+        # come 409 (transitoriamente non disponibile) così l'UI mostra
+        # "no star selected" invece di spammare errori.
         raise HTTPException(status_code=409,
-                            detail=f"PHD2: {e}")
-    except (ConnectionError, Exception) as e:
+            detail="PHD2 non ha risposto in tempo (probabilmente nessuna stella selezionata)")
+    except ConnectionError as e:
         raise HTTPException(status_code=503, detail=f"PHD2 not reachable: {e}")
+    except Exception as e:
+        _logger.exception("get_star_image unexpected")
+        raise HTTPException(status_code=500,
+            detail=f"PHD2 get_star_image unexpected: {type(e).__name__}: {e}")
 
     if not isinstance(res, dict) or "pixels" not in res:
         raise HTTPException(status_code=502,
