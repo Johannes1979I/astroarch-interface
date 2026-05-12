@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
@@ -23,6 +24,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
   late final SequenceRunner _runner;
   bool _runnerInited = false;
 
+  // Tracking sequenza VIA EKOS: poll periodico dello stato Capture su DBus
+  // così possiamo mostrare l'ABORT in modo persistente anche quando l'app
+  // si è chiusa/riaperta a sequenza in corso.
+  Timer? _ekosPoll;
+  Map<String, dynamic>? _ekosCapStatus;
+  bool _ekosBusy = false;        // true mentre sta partendo o c'è un job attivo
+  bool _ekosAborting = false;    // tap su ABORT ha già spedito il comando
+
   @override
   void initState() {
     super.initState();
@@ -33,16 +42,75 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _runner.addListener(_onRunnerChange);
       setState(() => _runnerInited = true);
     });
+    // Start polling Ekos capture status: anche se l'utente non ha appena
+    // premuto Avvia, una sequenza potrebbe essere già in corso (lanciata
+    // prima, o da KStars sul desktop). Vogliamo mostrare l'ABORT comunque.
+    _ekosPoll = Timer.periodic(const Duration(seconds: 3), (_) => _refreshEkosStatus());
+    _refreshEkosStatus();
   }
 
   @override
   void dispose() {
+    _ekosPoll?.cancel();
     if (_runnerInited) _runner.removeListener(_onRunnerChange);
     _tempCtl.dispose();
     super.dispose();
   }
 
   void _onRunnerChange() => setState(() {});
+
+  Future<void> _refreshEkosStatus() async {
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    try {
+      final st = await s.api!.captureEkosStatus();
+      if (!mounted) return;
+      final active = (st['active_job_id'] as num?)?.toInt() ?? -1;
+      final jobs = (st['job_count'] as num?)?.toInt() ?? 0;
+      // C'è qualcosa in corso se c'è un active_job_id valido (>=0) E lo
+      // stato del job non è "Idle"/"Complete". Lo stato preciso dipende
+      // da come Ekos lo riporta, lo trattiamo conservativamente: se
+      // active_job_id è valido e ci sono job in queue → sequenza viva.
+      setState(() {
+        _ekosCapStatus = st;
+        _ekosBusy = active >= 0 && jobs > 0;
+        if (!_ekosBusy) _ekosAborting = false;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _abortEkosSequence() async {
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    // Conferma esplicita: fermare la sequenza Ekos perde l'esposizione in
+    // corso (frame parziale viene scartato dal driver).
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text('Interrompere la sequenza?'.tr(context)),
+      content: Text('La sequenza Ekos verrà fermata immediatamente. '
+          'L\'esposizione in corso verrà scartata.'.tr(context)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false),
+            child: Text('ANNULLA'.tr(context))),
+        TextButton(
+          style: TextButton.styleFrom(foregroundColor: T.err(context)),
+          onPressed: () => Navigator.pop(c, true),
+          child: Text('FERMA SEQUENZA'.tr(context)),
+        ),
+      ],
+    ));
+    if (ok != true) return;
+    setState(() => _ekosAborting = true);
+    try {
+      await s.api!.captureEkosAbort();
+      if (mounted) showSnack(context, 'Sequenza fermata'.tr(context));
+      // Polla subito per riflettere il nuovo stato
+      await _refreshEkosStatus();
+    } on ApiException catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
+    } catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -301,28 +369,108 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget _runControls(AppState s, String camera, String? filterDev) {
     if (!_runnerInited) return const SizedBox();
     final hasJobs = s.captureJobs.isNotEmpty;
-    return Row(children: [
-      if (!_runner.running)
-        Expanded(child: PrimaryButton(
-          label: 'AVVIA SEQUENZA'.tr(context), icon: Icons.play_arrow,
-          onPressed: hasJobs ? () => _confirmAndRun(s, camera, filterDev) : null,
-        ))
-      else if (_runner.paused)
-        Expanded(child: PrimaryButton(
-          label: 'RIPRENDI'.tr(context), icon: Icons.play_arrow,
-          onPressed: () => _runner.resume(),
-        ))
-      else
+
+    // Tre modi di esecuzione, tre stati di "running":
+    //   • _runner.running  → modalità DIRETTO (locale)
+    //   • _ekosBusy        → sequenza VIA EKOS in corso (anche se lanciata
+    //                        da KStars desktop o da una sessione app precedente)
+    //
+    // L'ABORT deve essere SEMPRE accessibile finché una sequenza è viva.
+    final localRunning = _runner.running;
+    final ekosRunning = _ekosBusy;
+    final anyRunning = localRunning || ekosRunning;
+
+    return Column(children: [
+      // Banner stato Ekos: lo mostriamo se sta girando una sequenza via Ekos
+      // (con remaining time live). Distinto da quello del _runner locale.
+      if (ekosRunning) _ekosRunningBanner(),
+      if (ekosRunning) const SizedBox(height: 8),
+
+      Row(children: [
+        if (!anyRunning)
+          Expanded(child: PrimaryButton(
+            label: 'AVVIA SEQUENZA'.tr(context), icon: Icons.play_arrow,
+            onPressed: hasJobs ? () => _confirmAndRun(s, camera, filterDev) : null,
+          ))
+        else if (localRunning && _runner.paused)
+          Expanded(child: PrimaryButton(
+            label: 'RIPRENDI'.tr(context), icon: Icons.play_arrow,
+            onPressed: () => _runner.resume(),
+          ))
+        else if (localRunning)
+          Expanded(child: GhostButton(
+            label: 'PAUSA'.tr(context), icon: Icons.pause,
+            onPressed: () => _runner.pause(),
+          ))
+        else
+          // Ekos in corso: niente pausa (Ekos non espone pause/resume sequence
+          // via DBus in modo affidabile); solo lo stato "in corso".
+          Expanded(child: GhostButton(
+            label: 'SEQUENZA EKOS IN CORSO'.tr(context),
+            icon: Icons.sync, onPressed: null,
+          )),
+        const SizedBox(width: 8),
         Expanded(child: GhostButton(
-          label: 'PAUSA'.tr(context), icon: Icons.pause,
-          onPressed: () => _runner.pause(),
+          label: _ekosAborting ? 'ABORTING…'.tr(context) : 'FERMA SEQUENZA'.tr(context),
+          icon: Icons.stop, danger: true,
+          onPressed: !anyRunning || _ekosAborting ? null
+              : localRunning
+                  ? () => _runner.abort()
+                  : () => _abortEkosSequence(),
         )),
-      const SizedBox(width: 8),
-      Expanded(child: GhostButton(
-        label: 'ABORT'.tr(context), icon: Icons.stop, danger: true,
-        onPressed: _runner.running ? () => _runner.abort() : null,
-      )),
+      ]),
     ]);
+  }
+
+  /// Banner che mostra lo stato della sequenza VIA EKOS in corso:
+  /// progresso job attuale e tempo rimanente complessivo.
+  Widget _ekosRunningBanner() {
+    final st = _ekosCapStatus ?? {};
+    final activeId = (st['active_job_id'] as num?)?.toInt() ?? -1;
+    final jobs = (st['job_count'] as num?)?.toInt() ?? 0;
+    final imgProg = (st['job_image_progress'] as num?)?.toInt();
+    final imgCount = (st['job_image_count'] as num?)?.toInt();
+    final remOverall = (st['overall_remaining_seconds'] as num?)?.toInt();
+    final jobState = st['job_state']?.toString() ?? '—';
+
+    String fmtTime(int? sec) {
+      if (sec == null || sec < 0) return '—';
+      final h = sec ~/ 3600, m = (sec % 3600) ~/ 60, s = sec % 60;
+      return h > 0
+          ? '${h}h ${m.toString().padLeft(2,'0')}m ${s.toString().padLeft(2,'0')}s'
+          : '${m}m ${s.toString().padLeft(2,'0')}s';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: T.accent(context).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: T.accent(context).withValues(alpha: 0.5)),
+      ),
+      child: Row(children: [
+        SizedBox(width: 18, height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2,
+                color: T.accent(context))),
+        const SizedBox(width: 10),
+        Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('SEQUENZA EKOS IN CORSO'.tr(context),
+              style: TextStyle(color: T.accent(context), fontSize: 11,
+                  letterSpacing: 1.2, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+            '${'Job'.tr(context)} ${activeId + 1}/$jobs · '
+            '${imgProg ?? "?"}/${imgCount ?? "?"} ${'frame'.tr(context)} · '
+            '$jobState',
+            style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+          ),
+          Text('${'Rimanenti'.tr(context)}: ${fmtTime(remOverall)}',
+              style: TextStyle(fontSize: 11, fontFamily: 'monospace',
+                  color: T.muted(context))),
+        ])),
+      ]),
+    );
   }
 
   Future<void> _confirmAndRun(AppState s, String camera, String? filterDev) async {
@@ -463,6 +611,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
       if (r['loaded'] == true && r['started'] == true) {
         showSnack(context,
             '${'Sequenza inviata a Ekos · '.tr(context)}${r['jobs_count']} ${'job · train'.tr(context)} "${r['start_response']}"');
+        // Forza un refresh immediato dello stato Ekos in modo che il banner
+        // "SEQUENZA EKOS IN CORSO" + pulsante FERMA appaiano subito, senza
+        // dover aspettare il prossimo tick del polling da 3s.
+        Future.delayed(const Duration(milliseconds: 800), _refreshEkosStatus);
       } else {
         showSnack(context, '${'Errore: '.tr(context)}${r['load_response'] ?? r}', error: true);
       }
