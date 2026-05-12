@@ -5,7 +5,10 @@ Permette di pianificare una sequenza in Ekos Capture caricando un file .esq.
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import os
+import sqlite3
 import time
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -17,9 +20,94 @@ from ..config import get_settings
 from ..deps import Bridge, get_bridge
 
 router = APIRouter(prefix="/api/capture", tags=["capture"], dependencies=[Depends(require_token)])
+_logger = logging.getLogger("astroarch_bridge.capture_ekos")
 
 EKOS_DBUS_SERVICE = "org.kde.kstars"
 EKOS_CAPTURE_PATH = "/KStars/Ekos/Capture"
+
+# Dove Ekos persiste le impostazioni Capture per train (KStars 3.x)
+KSTARS_USERDB = Path.home() / ".local/share/kstars/userdb.sqlite"
+
+
+def _read_ekos_capture_settings(train_id: int | None = None) -> dict:
+    """Legge dalla userdb di KStars le impostazioni Capture configurate
+    dall'utente (cartella di salvataggio, placeholder format, formato suffix).
+
+    NON modifica niente — è SOLO una lettura. Serve per includere nell'ESQ
+    gli stessi valori che l'utente vede nella sua UI Ekos, così l'app non
+    sovrascrive mai i suoi path con valori vuoti.
+
+    Args:
+      train_id: opzionale, se None usa il primo train trovato
+
+    Returns: dict con chiavi (può essere vuoto se db non leggibile):
+      fits_dir            str   — cartella salvataggio (fileDirectoryT)
+      placeholder_format  str   — pattern path (placeholderFormatT)
+      placeholder_suffix  int   — formatSuffixN
+      target_name         str   — targetNameT
+      formats_list        list  — formatsList
+      filters_list        list  — filtersList
+    """
+    if not KSTARS_USERDB.exists():
+        _logger.warning("KStars userdb not found at %s", KSTARS_USERDB)
+        return {}
+    try:
+        conn = sqlite3.connect(f"file:{KSTARS_USERDB}?mode=ro", uri=True,
+                                timeout=2.0)
+        try:
+            cur = conn.cursor()
+            if train_id is not None:
+                cur.execute(
+                    "SELECT settings FROM opticaltrainsettings "
+                    "WHERE opticaltrain = ? LIMIT 1", (train_id,))
+            else:
+                # Prendi il primo train con opticaltrain piccolo (escludiamo
+                # 4294967295 che è il "global default")
+                cur.execute(
+                    "SELECT settings FROM opticaltrainsettings "
+                    "WHERE opticaltrain < 1000 "
+                    "ORDER BY opticaltrain LIMIT 1")
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return {}
+        settings = json.loads(row[0])
+        # La struttura è {"0": {capture settings}, "1": {focus settings}, ...}
+        # Capture è sotto la chiave "0"
+        cap = settings.get("0") or {}
+        out = {
+            "fits_dir": cap.get("fileDirectoryT"),
+            "placeholder_format": cap.get("placeholderFormatT"),
+            "placeholder_suffix": cap.get("formatSuffixN"),
+            "target_name": cap.get("targetNameT"),
+            "formats_list": cap.get("formatsList") or [],
+            "filters_list": cap.get("filtersList") or [],
+        }
+        _logger.info("Ekos capture settings from userdb: fits_dir=%r "
+                     "placeholder=%r suffix=%s",
+                     out["fits_dir"], out["placeholder_format"],
+                     out["placeholder_suffix"])
+        return out
+    except Exception as e:
+        _logger.warning("cannot read Ekos capture settings: %s", e)
+        return {}
+
+
+def _read_active_train_id() -> int | None:
+    """Legge CaptureTrainID da ~/.config/kstarsrc."""
+    cfg = Path.home() / ".config/kstarsrc"
+    if not cfg.exists():
+        return None
+    try:
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("CaptureTrainID="):
+                v = line.split("=", 1)[1].strip()
+                return int(v) if v.lstrip("-").isdigit() else None
+    except Exception:
+        return None
+    return None
 
 
 def _frame_type_label(ft: str) -> str:
@@ -30,6 +118,7 @@ def _frame_type_label(ft: str) -> str:
 def _esq_for_jobs(jobs: list[dict], target_name: str = "",
                   fits_dir: str | None = None,
                   placeholder_format: str | None = None,
+                  placeholder_suffix: int | None = None,
                   upload_mode: int | None = None) -> str:
     """Genera XML .esq compatibile Ekos 2.x da lista di job dict.
 
@@ -92,7 +181,9 @@ def _esq_for_jobs(jobs: list[dict], target_name: str = "",
             parts.append(f"<FITSDirectory>{escape(fits_dir)}</FITSDirectory>")
         if placeholder_format:
             parts.append(f"<PlaceholderFormat>{escape(placeholder_format)}</PlaceholderFormat>")
-            parts.append("<PlaceholderSuffix>1</PlaceholderSuffix>")
+            # Suffix: usa quello passato, default 1 (= numerazione)
+            suf = placeholder_suffix if placeholder_suffix is not None else 1
+            parts.append(f"<PlaceholderSuffix>{int(suf)}</PlaceholderSuffix>")
         if upload_mode is not None:
             parts.append(f"<UploadMode>{int(upload_mode)}</UploadMode>")
         # Gain/offset come PropertyVector
@@ -132,6 +223,30 @@ async def _dbus_call(*args: str, timeout: float = 10.0) -> tuple[int, str]:
     return proc.returncode, stdout.decode("utf-8", "replace").strip()
 
 
+@router.get("/ekos_user_settings")
+async def ekos_user_settings() -> dict:
+    """Restituisce le impostazioni Capture che l'utente ha settato dentro
+    Ekos sul desktop (cartella di salvataggio, placeholder format, ...).
+
+    Letti read-only dal database utente di KStars (~/.local/share/kstars/
+    userdb.sqlite, tabella opticaltrainsettings). NON modifichiamo niente
+    — la app è una GUI, può solo leggere.
+
+    Utile per:
+      - mostrare nella UI dell'app quale cartella verrà usata
+      - debug del problema "Ekos mi ha cancellato la cartella" (era un
+        bug, fix in v0.2.28)
+    """
+    train_id = _read_active_train_id()
+    settings = _read_ekos_capture_settings(train_id)
+    return {
+        "train_id": train_id,
+        "userdb_path": str(KSTARS_USERDB),
+        "userdb_exists": KSTARS_USERDB.exists(),
+        **settings,
+    }
+
+
 @router.get("/ekos_alive")
 async def ekos_alive() -> dict:
     """Verifica se Ekos è raggiungibile via DBus."""
@@ -163,20 +278,36 @@ async def ekos_run(payload: dict = Body(...)) -> dict:
     train = payload.get("train") or ""
     master = bool(payload.get("master", True))
     auto_start = bool(payload.get("auto_start", True))
-    # NON-INVASIVENESS: fits_dir, placeholder_format e upload_mode sono
-    # opzionali. Se non passati, l'ESQ NON contiene quei tag e Ekos usa
-    # le sue impostazioni (Preferences → FITS Settings).
-    # Prima della v0.2.25 il bridge forzava fits_dir a
+
+    # ========================================================================
+    # v0.2.28: LEGGE LE IMPOSTAZIONI UTENTE DA EKOS (userdb.sqlite)
+    # ========================================================================
+    # Prima di v0.2.25 il bridge forzava fits_dir a
     #   ~/Pictures/Ekos/AstroarchInterface/
-    # silenziosamente — l'utente non trovava le immagini in
-    # ~/Pictures/Ekos/ come si aspettava. RIMOSSO.
-    fits_dir = payload.get("fits_dir")  # None se non passato
-    placeholder_format = payload.get("placeholder_format")
+    # In v0.2.25 abbiamo rimosso il default ma omettendo i tag dall'ESQ —
+    # Ekos al loadSequenceQueue si trovava i campi VUOTI e li sovrascriveva
+    # nella sua UI (cartella e formato cancellati, job si fermava).
+    #
+    # FIX DEFINITIVO: leggiamo `fileDirectoryT` e `placeholderFormatT` dal
+    # database utente di KStars (tabella opticaltrainsettings) per il train
+    # attivo. Sono ESATTAMENTE i valori che l'utente vede nella sua UI Ekos.
+    # Li mettiamo nell'ESQ così l'app non modifica mai le sue scelte.
+    # L'app può ancora forzare override esplicito passandoli nel payload.
+    user_settings = _read_ekos_capture_settings(_read_active_train_id())
+    fits_dir = payload.get("fits_dir") or user_settings.get("fits_dir")
+    placeholder_format = (payload.get("placeholder_format")
+                          or user_settings.get("placeholder_format"))
+    placeholder_suffix = (payload.get("placeholder_suffix")
+                          if payload.get("placeholder_suffix") is not None
+                          else user_settings.get("placeholder_suffix"))
     upload_mode = payload.get("upload_mode")
+    _logger.info("ekos_run: using fits_dir=%r placeholder=%r suffix=%s",
+                 fits_dir, placeholder_format, placeholder_suffix)
 
     # Genera ESQ
     esq = _esq_for_jobs(jobs, target_name=target, fits_dir=fits_dir,
                        placeholder_format=placeholder_format,
+                       placeholder_suffix=placeholder_suffix,
                        upload_mode=upload_mode)
 
     # L'ESQ è un FILE temporaneo di servizio: lo salviamo in /tmp, non
@@ -273,13 +404,18 @@ async def ekos_clear() -> dict:
 async def preview_esq(payload: dict = Body(...)) -> dict:
     """Genera ESQ ma non lo invia. Utile per debug.
 
-    NON-INVASIVENESS: stessa regola di /ekos_run — i tag opzionali sono
-    omessi se non passati esplicitamente, così l'ESQ generato è quello
-    realmente inviato a Ekos (utile per riprodurre bug).
+    Come /ekos_run: per default legge fits_dir/placeholder_format/suffix
+    dalla userdb di KStars (ciò che l'utente vede in Ekos). Override
+    espliciti possibili.
     """
     jobs = payload.get("jobs") or []
     target = payload.get("target") or ""
+    user_settings = _read_ekos_capture_settings(_read_active_train_id())
     return {"esq": _esq_for_jobs(jobs, target_name=target,
-                                 fits_dir=payload.get("fits_dir"),
-                                 placeholder_format=payload.get("placeholder_format"),
-                                 upload_mode=payload.get("upload_mode"))}
+        fits_dir=payload.get("fits_dir") or user_settings.get("fits_dir"),
+        placeholder_format=(payload.get("placeholder_format")
+                            or user_settings.get("placeholder_format")),
+        placeholder_suffix=(payload.get("placeholder_suffix")
+                            if payload.get("placeholder_suffix") is not None
+                            else user_settings.get("placeholder_suffix")),
+        upload_mode=payload.get("upload_mode"))}
