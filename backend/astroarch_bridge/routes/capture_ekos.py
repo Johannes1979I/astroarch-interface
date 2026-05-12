@@ -28,8 +28,23 @@ def _frame_type_label(ft: str) -> str:
 
 
 def _esq_for_jobs(jobs: list[dict], target_name: str = "",
-                  fits_dir: str = "") -> str:
-    """Genera XML .esq compatibile Ekos 2.x da lista di job dict."""
+                  fits_dir: str | None = None,
+                  placeholder_format: str | None = None,
+                  upload_mode: int | None = None) -> str:
+    """Genera XML .esq compatibile Ekos 2.x da lista di job dict.
+
+    NON-INVASIVENESS RULE (v0.2.25): se l'app NON passa un valore esplicito,
+    NON includiamo il relativo tag nell'ESQ. In quel caso Ekos usa la sua
+    impostazione configurata in Preferences → FITS Settings (FITS Default
+    Folder) e il PlaceholderFormat globale. L'app è una GUI: deve essere
+    trasparente, non sovrascrivere silenziosamente i path dell'utente.
+
+    Args:
+      fits_dir: se None, omette `<FITSDirectory>` → Ekos default
+      placeholder_format: se None, omette `<PlaceholderFormat>` → Ekos default
+      upload_mode: se None, omette `<UploadMode>` → Ekos default
+                   (0=Client, 1=Local, 2=Both)
+    """
     parts = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<SequenceQueue version='2.6'>",
              "<GuideDeviation enabled='false'>2</GuideDeviation>",
@@ -57,7 +72,6 @@ def _esq_for_jobs(jobs: list[dict], target_name: str = "",
         delay = float(job.get("delaySec", 0))
         ft_label = _frame_type_label(job.get("frameType", "FRAME_LIGHT"))
         dither = "1" if job.get("ditherEachFrame") else "0"
-        fits_dir_safe = fits_dir or str(Path.home() / "Pictures" / "Ekos" / "AstroarchInterface")
         parts.append("<Job>")
         parts.append(f"<Exposure>{exp:g}</Exposure>")
         parts.append(f"<Format>{escape(cap_fmt_label)}</Format>")
@@ -72,10 +86,15 @@ def _esq_for_jobs(jobs: list[dict], target_name: str = "",
         if target:
             parts.append(f"<TargetName>{escape(target)}</TargetName>")
         parts.append(f"<GuideDitherPerJob>{dither}</GuideDitherPerJob>")
-        parts.append(f"<FITSDirectory>{escape(fits_dir_safe)}</FITSDirectory>")
-        parts.append("<PlaceholderFormat>/%t/%T/%F/%t_%T_%F_%D</PlaceholderFormat>")
-        parts.append("<PlaceholderSuffix>1</PlaceholderSuffix>")
-        parts.append("<UploadMode>2</UploadMode>")  # 2 = Both
+        # NON-INVASIVENESS: tag opzionali, omessi se non specificati esplicitamente.
+        # Quando omessi Ekos usa le impostazioni della sua UI/Preferenze.
+        if fits_dir:
+            parts.append(f"<FITSDirectory>{escape(fits_dir)}</FITSDirectory>")
+        if placeholder_format:
+            parts.append(f"<PlaceholderFormat>{escape(placeholder_format)}</PlaceholderFormat>")
+            parts.append("<PlaceholderSuffix>1</PlaceholderSuffix>")
+        if upload_mode is not None:
+            parts.append(f"<UploadMode>{int(upload_mode)}</UploadMode>")
         # Gain/offset come PropertyVector
         parts.append("<Properties>")
         parts.append(f"<PropertyVector name='CCD_CONTROLS'>"
@@ -144,13 +163,26 @@ async def ekos_run(payload: dict = Body(...)) -> dict:
     train = payload.get("train") or ""
     master = bool(payload.get("master", True))
     auto_start = bool(payload.get("auto_start", True))
-    fits_dir = payload.get("fits_dir") or str(get_settings().images_dir)
+    # NON-INVASIVENESS: fits_dir, placeholder_format e upload_mode sono
+    # opzionali. Se non passati, l'ESQ NON contiene quei tag e Ekos usa
+    # le sue impostazioni (Preferences → FITS Settings).
+    # Prima della v0.2.25 il bridge forzava fits_dir a
+    #   ~/Pictures/Ekos/AstroarchInterface/
+    # silenziosamente — l'utente non trovava le immagini in
+    # ~/Pictures/Ekos/ come si aspettava. RIMOSSO.
+    fits_dir = payload.get("fits_dir")  # None se non passato
+    placeholder_format = payload.get("placeholder_format")
+    upload_mode = payload.get("upload_mode")
 
     # Genera ESQ
-    esq = _esq_for_jobs(jobs, target_name=target, fits_dir=fits_dir)
+    esq = _esq_for_jobs(jobs, target_name=target, fits_dir=fits_dir,
+                       placeholder_format=placeholder_format,
+                       upload_mode=upload_mode)
 
-    # Salva in dir condivisa
-    save_dir = Path(fits_dir) / "AstroarchInterface"
+    # L'ESQ è un FILE temporaneo di servizio: lo salviamo in /tmp, non
+    # nella cartella immagini dell'utente. Sopravvive solo finché Ekos
+    # lo legge (qualche secondo) ed è rigenerato ad ogni run.
+    save_dir = Path("/tmp/astroarch_bridge")
     save_dir.mkdir(parents=True, exist_ok=True)
     esq_path = save_dir / f"sequence_{int(time.time())}.esq"
     esq_path.write_text(esq, encoding="utf-8")
@@ -239,8 +271,15 @@ async def ekos_clear() -> dict:
 
 @router.post("/preview_esq")
 async def preview_esq(payload: dict = Body(...)) -> dict:
-    """Genera ESQ ma non lo invia. Utile per debug."""
+    """Genera ESQ ma non lo invia. Utile per debug.
+
+    NON-INVASIVENESS: stessa regola di /ekos_run — i tag opzionali sono
+    omessi se non passati esplicitamente, così l'ESQ generato è quello
+    realmente inviato a Ekos (utile per riprodurre bug).
+    """
     jobs = payload.get("jobs") or []
     target = payload.get("target") or ""
-    fits_dir = payload.get("fits_dir") or str(get_settings().images_dir)
-    return {"esq": _esq_for_jobs(jobs, target_name=target, fits_dir=fits_dir)}
+    return {"esq": _esq_for_jobs(jobs, target_name=target,
+                                 fits_dir=payload.get("fits_dir"),
+                                 placeholder_format=payload.get("placeholder_format"),
+                                 upload_mode=payload.get("upload_mode"))}
