@@ -27,6 +27,15 @@ class AppState extends ChangeNotifier {
   String? selectedFocuser;
   String? selectedFilterWheel;
 
+  // --- Active target (oggetto inquadrato dall'utente) ---------------------
+  // Il target è memorizzato qui IN APP, persistente. Ogni volta che cambia
+  // viene anche spinto su Ekos via setTargetCoords così Ekos resta allineato
+  // (NB: KStars "Center & Slew" non aggiorna automaticamente Align.target,
+  // questo è il fix architetturale).
+  String? activeTargetName;
+  double? activeTargetRaHours;
+  double? activeTargetDecDeg;
+
   // Ruoli camere auto-rilevati dal backend (PHD2 / heuristic)
   String? primaryCameraAuto;
   String? guideCameraAuto;
@@ -124,6 +133,9 @@ class AppState extends ChangeNotifier {
     selectedMount = p.getString('selectedMount');
     selectedFocuser = p.getString('selectedFocuser');
     selectedFilterWheel = p.getString('selectedFilterWheel');
+    activeTargetName = p.getString('activeTargetName');
+    activeTargetRaHours = p.getDouble('activeTargetRaHours');
+    activeTargetDecDeg = p.getDouble('activeTargetDecDeg');
     notifyListeners();
   }
 
@@ -139,6 +151,40 @@ class AppState extends ChangeNotifier {
     if (selectedMount != null) await p.setString('selectedMount', selectedMount!); else await p.remove('selectedMount');
     if (selectedFocuser != null) await p.setString('selectedFocuser', selectedFocuser!); else await p.remove('selectedFocuser');
     if (selectedFilterWheel != null) await p.setString('selectedFilterWheel', selectedFilterWheel!); else await p.remove('selectedFilterWheel');
+    if (activeTargetName != null) await p.setString('activeTargetName', activeTargetName!); else await p.remove('activeTargetName');
+    if (activeTargetRaHours != null) await p.setDouble('activeTargetRaHours', activeTargetRaHours!); else await p.remove('activeTargetRaHours');
+    if (activeTargetDecDeg != null) await p.setDouble('activeTargetDecDeg', activeTargetDecDeg!); else await p.remove('activeTargetDecDeg');
+  }
+
+  /// Imposta il target attivo (nome + RA/Dec) localmente e lo spinge a Ekos
+  /// via /api/align/ekos_align_set (idempotente).
+  /// Se nome è null, usa una stringa formattata dalle coordinate.
+  Future<void> setActiveTarget({
+    String? name, required double raHours, required double decDeg,
+    bool pushToEkos = true,
+  }) async {
+    activeTargetName = name;
+    activeTargetRaHours = raHours;
+    activeTargetDecDeg = decDeg;
+    notifyListeners();
+    await savePrefs();
+    if (pushToEkos && api != null) {
+      try {
+        await api!.alignEkosSet(targetRaHours: raHours, targetDecDeg: decDeg);
+      } catch (_) {
+        // Non bloccare l'UI se Ekos non risponde — il valore è comunque
+        // salvato in app e verrà ri-spinto prima del prossimo captureAndSolve.
+      }
+    }
+  }
+
+  /// Cancella il target attivo (locale + Ekos resta come è).
+  Future<void> clearActiveTarget() async {
+    activeTargetName = null;
+    activeTargetRaHours = null;
+    activeTargetDecDeg = null;
+    notifyListeners();
+    await savePrefs();
   }
 
   /// Lista dei device che espongono una certa property INDI (es CCD_EXPOSURE = camere).

@@ -449,6 +449,26 @@ class L10n {
     'USA POSIZIONE MOUNT COME TARGET': 'USE MOUNT POSITION AS TARGET',
     'Target = posizione mount (': 'Target = mount position (',
     'Target sospetto': 'Suspicious target',
+    'Δ mount ': 'Δ mount ',
+    'Nessun target attivo': 'No active target',
+    'Hai scelto "Slew to target" ma in app non c\'è un target attivo. '
+            'Per evitare slew verso posizioni stantie cosa vuoi fare?':
+        'You chose "Slew to target" but the app has no active target. '
+        'To avoid slewing to a stale position, what do you want to do?',
+    'Usa posizione mount': 'Use mount position',
+    'Scegli target': 'Choose target',
+    'Cerca su SIMBAD': 'Search SIMBAD',
+    'Oppure inserisci RA/Dec': 'Or enter RA/Dec',
+    'Usa queste coordinate': 'Use these coordinates',
+    'RA/Dec non validi': 'Invalid RA/Dec',
+    'Nessun target attivo. Sceglilo prima di "Slew to target".':
+        'No active target. Set one before "Slew to target".',
+    'Target di Ekos differisce di ': 'Ekos target differs by ',
+    '°. Verrà ri-spinto al solve.': '°. It will be re-pushed on solve.',
+    'CAMBIA TARGET': 'CHANGE TARGET',
+    'SCEGLI TARGET': 'SET TARGET',
+    'SYNC EKOS': 'SYNC EKOS',
+    'Target spinto a Ekos': 'Target pushed to Ekos',
     'Hai scelto "Slew to target" ma in Ekos non c\'è alcun target impostato. '
             'Lo Slew non saprebbe dove andare o porterebbe il telescopio a (0,0) — '
             'vicino all\'orizzonte.':

@@ -132,40 +132,39 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
   Future<void> _captureAndSolve(AppState s) async {
     if (s.api == null) return;
 
-    // PRE-FLIGHT: se l'utente sta per fare Slew to target e il target è
-    // molto distante dalla posizione attuale della montatura, Ekos
-    // slewerebbe il telescopio LONTANO dal soggetto inquadrato (è il
-    // bug "va in park" descritto dall'utente — Ekos sleva al target
-    // configurato, che però è stantio da una sessione precedente).
-    // Chiediamo conferma esplicita prima di partire.
-    if (_solverAction == 1 /* Slew to target */) {
-      final tgt = _full?['target'] as Map<String, dynamic>?;
-      final mount = _full?['mount_coords'] as Map<String, dynamic>?;
-      final tgtRa = (tgt?['ra_hours'] as num?)?.toDouble();
-      final tgtDec = (tgt?['dec_deg'] as num?)?.toDouble();
-      final mRa = (mount?['ra_hours'] as num?)?.toDouble();
-      final mDec = (mount?['dec_deg'] as num?)?.toDouble();
-      double distDeg = 0;
-      if (tgtRa != null && tgtDec != null && mRa != null && mDec != null) {
-        final dRa = (tgtRa - mRa) * 15.0 * math.cos(mDec * math.pi / 180.0);
-        final dDec = tgtDec - mDec;
-        distDeg = math.sqrt(dRa * dRa + dDec * dDec);
-      }
-      final noTarget = tgtRa == null || tgtDec == null
-          || (tgtRa.abs() < 0.001 && tgtDec.abs() < 0.001);
-      final stale = distDeg > 5.0;
-      if (noTarget || stale) {
-        final choice = await _confirmSlewDialog(noTarget, distDeg,
-            tgtRa, tgtDec, mRa, mDec);
-        if (choice == null) return; // cancel
-        if (choice == 'use_mount' && mRa != null && mDec != null) {
-          try {
-            await s.api!.alignEkosSet(targetRaHours: mRa, targetDecDeg: mDec);
-            await _poll();
-          } catch (_) {}
+    // NUOVA LOGICA v0.2.24: l'app possiede il TARGET ATTIVO localmente
+    // (in AppState, persistente). Prima di fare captureAndSolve con
+    // azione = Slew/Sync ri-spingiamo il target ad Ekos così Ekos ha
+    // SEMPRE le coordinate giuste, anche se KStars o un altro flusso
+    // l'aveva lasciato stantio.
+    //
+    // Caso speciale: se l'utente ha scelto Slew ma non ha mai impostato
+    // un target attivo nell'app, ci fermiamo per chiederglielo (non
+    // possiamo inventarci dove sleware).
+    if (_solverAction == 1 /* Slew to target */ &&
+        (s.activeTargetRaHours == null || s.activeTargetDecDeg == null)) {
+      final choice = await _noTargetDialog(s);
+      if (choice == null) return; // cancel
+      if (choice == 'use_mount') {
+        final mRa = (_full?['mount_coords']?['ra_hours'] as num?)?.toDouble();
+        final mDec = (_full?['mount_coords']?['dec_deg'] as num?)?.toDouble();
+        if (mRa != null && mDec != null) {
+          await s.setActiveTarget(name: 'Mount position', raHours: mRa, decDeg: mDec);
         }
-        // choice == 'proceed' → procedi così com'è
+      } else if (choice == 'pick') {
+        final picked = await _pickTargetDialog(s);
+        if (picked == null) return;
+        // _pickTargetDialog ha già fatto setActiveTarget
       }
+    }
+
+    // Ri-spingi sempre il target a Ekos (idempotente, costa nulla)
+    if (s.activeTargetRaHours != null && s.activeTargetDecDeg != null) {
+      try {
+        await s.api!.alignEkosSet(
+            targetRaHours: s.activeTargetRaHours,
+            targetDecDeg: s.activeTargetDecDeg);
+      } catch (_) {}
     }
 
     setState(() => _busy = true);
@@ -192,42 +191,21 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     }
   }
 
-  /// Dialog che spiega che il target è probabilmente stantio e offre 3
-  /// opzioni: annulla, usa posizione mount come target (sicuro), procedi
-  /// così com'è (lo so cosa sto facendo).
-  Future<String?> _confirmSlewDialog(bool noTarget, double distDeg,
-      double? tgtRa, double? tgtDec, double? mRa, double? mDec) async {
+  /// Dialog mostrato quando l'utente vuole fare Slew ma non ha mai
+  /// impostato un target attivo in app. Tre opzioni: annulla, usa
+  /// posizione mount come target, scegli/cerca target.
+  Future<String?> _noTargetDialog(AppState s) async {
+    final mRa = (_full?['mount_coords']?['ra_hours'] as num?)?.toDouble();
+    final mDec = (_full?['mount_coords']?['dec_deg'] as num?)?.toDouble();
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(noTarget
-            ? 'Nessun target impostato'.tr(context)
-            : 'Target sospetto'.tr(context)),
-        content: Column(mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (noTarget)
-            Text('Hai scelto "Slew to target" ma in Ekos non c\'è alcun '
-                'target impostato. Lo Slew non saprebbe dove andare o '
-                'porterebbe il telescopio a (0,0) — vicino all\'orizzonte.'
-                .tr(context))
-          else ...[
-            Text('Hai scelto "Slew to target" ma il target Ekos è a '
-                '${distDeg.toStringAsFixed(1)}° dalla posizione attuale.'
-                .tr(context)),
-            const SizedBox(height: 10),
-            Text('Target: ${_hms(tgtRa)} ${_dms(tgtDec)}',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-            Text('Mount:  ${_hms(mRa)} ${_dms(mDec)}',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-            const SizedBox(height: 8),
-            Text(
-              'Slew muoverà la montatura verso le coordinate TARGET, NON '
-              'centrerà l\'oggetto che hai inquadrato. Se non vuoi questo, '
-              'aggiorna prima il target.'.tr(context),
-              style: TextStyle(color: T.warn(context), fontSize: 12),
-            ),
-          ],
-        ]),
+        title: Text('Nessun target attivo'.tr(context)),
+        content: Text(
+          'Hai scelto "Slew to target" ma in app non c\'è un target '
+          'attivo. Per evitare slew verso posizioni stantie cosa vuoi fare?'
+              .tr(context),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, null),
@@ -236,15 +214,138 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
           if (mRa != null && mDec != null)
             TextButton(
               onPressed: () => Navigator.pop(ctx, 'use_mount'),
-              child: Text('Aggiorna target = mount'.tr(context)),
+              child: Text('Usa posizione mount'.tr(context)),
             ),
           TextButton(
-            style: TextButton.styleFrom(foregroundColor: T.err(context)),
-            onPressed: () => Navigator.pop(ctx, 'proceed'),
-            child: Text('Procedi comunque'.tr(context)),
+            onPressed: () => Navigator.pop(ctx, 'pick'),
+            child: Text('Scegli target'.tr(context)),
           ),
         ],
       ),
+    );
+  }
+
+  /// Dialog di scelta target: SIMBAD search + ingresso manuale RA/Dec
+  /// + posizione mount corrente. Ritorna 'ok' se l'utente ha selezionato
+  /// (e in tal caso setActiveTarget è già stato chiamato).
+  Future<String?> _pickTargetDialog(AppState s) async {
+    final simbadCtl = TextEditingController();
+    final raCtl = TextEditingController();
+    final decCtl = TextEditingController();
+    bool busy = false;
+    String? err;
+    final mRa = (_full?['mount_coords']?['ra_hours'] as num?)?.toDouble();
+    final mDec = (_full?['mount_coords']?['dec_deg'] as num?)?.toDouble();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSt) {
+        Future<void> resolveSimbad() async {
+          final name = simbadCtl.text.trim();
+          if (name.isEmpty || s.api == null) return;
+          setSt(() { busy = true; err = null; });
+          try {
+            final r = await s.api!.simbadSearch(name);
+            if (r['ra_hours'] != null && r['dec_deg'] != null) {
+              await s.setActiveTarget(
+                name: r['name']?.toString() ?? name,
+                raHours: (r['ra_hours'] as num).toDouble(),
+                decDeg: (r['dec_deg'] as num).toDouble(),
+              );
+              if (ctx.mounted) Navigator.pop(ctx, 'ok');
+            } else {
+              setSt(() => err = 'Oggetto non trovato'.tr(context));
+            }
+          } catch (e) {
+            setSt(() => err = '${'Errore: '.tr(context)}$e');
+          } finally {
+            setSt(() => busy = false);
+          }
+        }
+        Future<void> useManual() async {
+          final ra = double.tryParse(raCtl.text.replaceAll(',', '.'));
+          final dec = double.tryParse(decCtl.text.replaceAll(',', '.'));
+          if (ra == null || dec == null) {
+            setSt(() => err = 'RA/Dec non validi'.tr(context));
+            return;
+          }
+          await s.setActiveTarget(name: 'Manuale', raHours: ra, decDeg: dec);
+          if (ctx.mounted) Navigator.pop(ctx, 'ok');
+        }
+        return AlertDialog(
+          title: Text('Scegli target'.tr(context)),
+          content: SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // SIMBAD search
+            TextField(
+              controller: simbadCtl,
+              decoration: InputDecoration(
+                labelText: 'Cerca su SIMBAD'.tr(context),
+                hintText: 'M 13, NGC 7000, Vega…',
+                suffixIcon: busy
+                    ? const Padding(padding: EdgeInsets.all(12),
+                        child: SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2)))
+                    : IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: resolveSimbad,
+                      ),
+              ),
+              onSubmitted: (_) => resolveSimbad(),
+            ),
+            const SizedBox(height: 14),
+            Divider(color: T.line(context)),
+            const SizedBox(height: 8),
+            Text('Oppure inserisci RA/Dec'.tr(context),
+                style: TextStyle(color: T.muted(context), fontSize: 11)),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(child: TextField(controller: raCtl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'RA (h)'.tr(context),
+                    hintText: '16.69'))),
+              const SizedBox(width: 8),
+              Expanded(child: TextField(controller: decCtl,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true, signed: true),
+                decoration: InputDecoration(labelText: 'Dec (°)'.tr(context),
+                    hintText: '36.46'))),
+            ]),
+            const SizedBox(height: 6),
+            SizedBox(width: double.infinity, child: OutlinedButton(
+              onPressed: busy ? null : useManual,
+              child: Text('Usa queste coordinate'.tr(context)),
+            )),
+            if (mRa != null && mDec != null) ...[
+              const SizedBox(height: 14),
+              Divider(color: T.line(context)),
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                icon: const Icon(Icons.my_location, size: 16),
+                onPressed: busy ? null : () async {
+                  await s.setActiveTarget(name: 'Mount position',
+                      raHours: mRa, decDeg: mDec);
+                  if (ctx.mounted) Navigator.pop(ctx, 'ok');
+                },
+                label: Text('${'Usa posizione mount'.tr(context)} '
+                    '(${_hms(mRa)} ${_dms(mDec)})',
+                    style: const TextStyle(fontSize: 11)),
+              )),
+            ],
+            if (err != null) Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(err!, style: TextStyle(color: T.err(context), fontSize: 12)),
+            ),
+          ])),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(ctx, null),
+              child: Text('Annulla'.tr(context)),
+            ),
+          ],
+        );
+      }),
     );
   }
 
@@ -292,17 +393,18 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       children: [
         _imagePreviewCard(s, st, lockUI, mountSlewing),
         const SizedBox(height: 10),
+        // TARGET ATTIVO in cima: l'app possiede il target (persistente),
+        // viene ri-spinto a Ekos prima di ogni captureAndSolve.
+        // Questo risolve il problema dove KStars "Center & Slew" non
+        // aggiorna m_targetCoord di Ekos Align → Slew finiva al target
+        // stantio di una sessione precedente.
+        _targetSelectorCard(s, lockUI),
+        const SizedBox(height: 10),
         _quickParamsCard(lockUI),
         const SizedBox(height: 10),
         _bigActionButton(s, inProgress, mountSlewing),
         const SizedBox(height: 8),
         _solverActionRow(lockUI),
-        const SizedBox(height: 8),
-        // Target di Ekos: visualizzazione + warning se stantio.
-        // Senza questo l'utente non sa che "Slew to target" usa un target
-        // potenzialmente vecchio (capita: aprivamo un nuovo progetto e
-        // Slew slewava al target della sessione precedente).
-        _targetSelectorCard(s, lockUI),
         const SizedBox(height: 10),
         // Mostra la solution SOLO se l'ultimo run è effettivamente completato.
         // Ekos restituisce sempre l'ultima solution riuscita (anche stale dopo
@@ -574,34 +676,52 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
   /// con warning se sono distanti più di 30° dalla posizione del mount
   /// (= target probabilmente stantio da sessione precedente), e con un
   /// pulsante per impostare target = posizione corrente della montatura.
+  /// Card del TARGET ATTIVO posseduto dall'app (AppState.activeTarget*).
+  /// Mostra nome + RA/Dec, Δ vs mount, e segnala se il target Ekos diverge
+  /// (es. KStars l'ha cambiato). Bottoni: Cambia target, Sincronizza ad
+  /// Ekos (rispingi).
   Widget _targetSelectorCard(AppState s, bool lockUI) {
-    final tgt = _full?['target'] as Map<String, dynamic>?;
     final mount = _full?['mount_coords'] as Map<String, dynamic>?;
-    final tgtRa = (tgt?['ra_hours'] as num?)?.toDouble();
-    final tgtDec = (tgt?['dec_deg'] as num?)?.toDouble();
+    final ekosTgt = _full?['target'] as Map<String, dynamic>?;
     final mRa = (mount?['ra_hours'] as num?)?.toDouble();
     final mDec = (mount?['dec_deg'] as num?)?.toDouble();
-    final hasTarget = tgtRa != null && tgtDec != null
-        && !(tgtRa.abs() < 0.001 && tgtDec.abs() < 0.001);
-    // Distanza approssimata target↔mount in gradi (sferica spannometrica)
-    double? distDeg;
-    if (hasTarget && mRa != null && mDec != null) {
-      final dRa = (tgtRa - mRa) * 15.0 * math.cos(mDec * math.pi / 180.0);
-      final dDec = tgtDec - mDec;
-      distDeg = math.sqrt(dRa * dRa + dDec * dDec);
-    }
-    final stale = distDeg != null && distDeg > 30.0;
+    final tRa = s.activeTargetRaHours;
+    final tDec = s.activeTargetDecDeg;
+    final hasAppTarget = tRa != null && tDec != null;
 
-    final bg = !hasTarget
+    // Δ app-target vs mount: utile per capire se "Slew to target" porterà
+    // lontano la montatura
+    double? distMount;
+    if (hasAppTarget && mRa != null && mDec != null) {
+      final dRa = (tRa - mRa) * 15.0 * math.cos(mDec * math.pi / 180.0);
+      final dDec = tDec - mDec;
+      distMount = math.sqrt(dRa * dRa + dDec * dDec);
+    }
+    // Δ app-target vs ekos-target: se differiscono, Ekos ha un target
+    // diverso dal nostro (es. KStars l'ha sovrascritto) → consigliamo
+    // di rispingere.
+    double? deltaEkos;
+    if (hasAppTarget && ekosTgt != null) {
+      final eRa = (ekosTgt['ra_hours'] as num?)?.toDouble();
+      final eDec = (ekosTgt['dec_deg'] as num?)?.toDouble();
+      if (eRa != null && eDec != null) {
+        final dRa = (tRa - eRa) * 15.0 * math.cos(tDec * math.pi / 180.0);
+        final dDec = tDec - eDec;
+        deltaEkos = math.sqrt(dRa * dRa + dDec * dDec);
+      }
+    }
+    final ekosDrifted = deltaEkos != null && deltaEkos > 0.1;
+
+    final bg = !hasAppTarget
         ? T.muted(context).withValues(alpha: 0.10)
-        : stale
-            ? T.err(context).withValues(alpha: 0.10)
+        : ekosDrifted
+            ? T.warn(context).withValues(alpha: 0.10)
             : T.ok(context).withValues(alpha: 0.05);
-    final border = !hasTarget
+    final border = !hasAppTarget
         ? T.muted(context).withValues(alpha: 0.4)
-        : stale
-            ? T.err(context).withValues(alpha: 0.5)
-            : T.ok(context).withValues(alpha: 0.3);
+        : ekosDrifted
+            ? T.warn(context).withValues(alpha: 0.5)
+            : T.ok(context).withValues(alpha: 0.4);
 
     return Container(
       padding: const EdgeInsets.all(10),
@@ -611,65 +731,90 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(stale ? Icons.warning_amber
-              : (hasTarget ? Icons.flag : Icons.flag_outlined),
-              size: 14, color: stale ? T.err(context) : T.muted(context)),
+          Icon(hasAppTarget ? Icons.flag : Icons.flag_outlined,
+              size: 14, color: hasAppTarget
+                  ? T.accent(context) : T.muted(context)),
           const SizedBox(width: 6),
-          Text('TARGET EKOS'.tr(context), style: TextStyle(
+          Text('TARGET ATTIVO'.tr(context), style: TextStyle(
               color: T.muted(context), fontSize: 10,
               letterSpacing: 1.4, fontWeight: FontWeight.w700)),
-          if (distDeg != null) ...[
+          if (distMount != null) ...[
             const Spacer(),
-            Text('Δ ${distDeg.toStringAsFixed(1)}°',
-                style: TextStyle(color: stale ? T.err(context) : T.muted(context),
-                    fontSize: 11, fontFamily: 'monospace',
-                    fontWeight: FontWeight.w700)),
+            Text('${'Δ mount '.tr(context)}${distMount.toStringAsFixed(1)}°',
+                style: TextStyle(color: T.muted(context),
+                    fontSize: 11, fontFamily: 'monospace')),
           ],
         ]),
         const SizedBox(height: 6),
-        if (hasTarget) Row(children: [
-          Expanded(child: _smallKv('AR', _hms(tgtRa))),
-          Expanded(child: _smallKv('DEC', _dms(tgtDec))),
-        ]) else Text('Nessun target impostato'.tr(context),
+        if (hasAppTarget) ...[
+          if (s.activeTargetName != null) Text(s.activeTargetName!,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const SizedBox(height: 2),
+          Row(children: [
+            Expanded(child: _smallKv('AR', _hms(tRa))),
+            Expanded(child: _smallKv('DEC', _dms(tDec))),
+          ]),
+          if (ekosDrifted) Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(children: [
+              Icon(Icons.warning_amber, size: 14, color: T.warn(context)),
+              const SizedBox(width: 4),
+              Expanded(child: Text(
+                'Target di Ekos differisce di '
+                '${deltaEkos.toStringAsFixed(2)}°. Verrà ri-spinto al solve.'
+                    .tr(context),
+                style: TextStyle(color: T.warn(context), fontSize: 11),
+              )),
+            ]),
+          ),
+        ] else Text(
+            'Nessun target attivo. Sceglilo prima di "Slew to target".'.tr(context),
             style: TextStyle(color: T.muted(context),
                 fontSize: 11, fontStyle: FontStyle.italic)),
-        if (stale) Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-              'Il target è > 30° dalla posizione attuale: probabilmente stantio. '
-              '"Slew to target" porterebbe il telescopio lontano.'.tr(context),
-              style: TextStyle(color: T.err(context), fontSize: 11)),
-        ),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: (lockUI || mRa == null || mDec == null) ? null : () async {
-              try {
-                await s.api!.alignEkosSet(
-                    targetRaHours: mRa, targetDecDeg: mDec);
-                if (mounted) {
-                  showSnack(context,
-                      '${'Target = posizione mount ('.tr(context)}'
-                      '${_hms(mRa)} ${_dms(mDec)})');
-                  await _poll();
-                }
-              } catch (e) {
-                if (mounted) showSnack(context,
-                    '${'Errore: '.tr(context)}$e', error: true);
-              }
-            },
-            icon: const Icon(Icons.my_location, size: 16),
-            label: Text('USA POSIZIONE MOUNT COME TARGET'.tr(context),
-                style: const TextStyle(fontSize: 11.5,
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(
+            onPressed: lockUI ? null : () => _pickTargetDialog(s),
+            icon: const Icon(Icons.edit_location_alt, size: 16),
+            label: Text(hasAppTarget
+                ? 'CAMBIA TARGET'.tr(context)
+                : 'SCEGLI TARGET'.tr(context),
+                style: const TextStyle(fontSize: 11,
                     fontWeight: FontWeight.w700, letterSpacing: .3)),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 10),
               foregroundColor: T.accent(context),
               side: BorderSide(color: T.accent(context).withValues(alpha: 0.5)),
             ),
-          ),
-        ),
+          )),
+          if (hasAppTarget) ...[
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton.icon(
+              onPressed: lockUI ? null : () async {
+                try {
+                  await s.api!.alignEkosSet(
+                      targetRaHours: tRa, targetDecDeg: tDec);
+                  if (mounted) {
+                    showSnack(context, 'Target spinto a Ekos'.tr(context));
+                    await _poll();
+                  }
+                } catch (e) {
+                  if (mounted) showSnack(context,
+                      '${'Errore: '.tr(context)}$e', error: true);
+                }
+              },
+              icon: const Icon(Icons.cloud_upload, size: 16),
+              label: Text('SYNC EKOS'.tr(context),
+                  style: const TextStyle(fontSize: 11,
+                      fontWeight: FontWeight.w700, letterSpacing: .3)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                foregroundColor: T.accent2(context),
+                side: BorderSide(color: T.accent2(context).withValues(alpha: 0.5)),
+              ),
+            )),
+          ],
+        ]),
       ]),
     );
   }
