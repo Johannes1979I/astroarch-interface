@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../app_version.dart';
 import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
@@ -106,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${'Zarletti-Osservatorio Jupiter'.tr(context)} · v0.1',
+                  '${'Zarletti-Osservatorio Jupiter'.tr(context)} · v$kAppVersion',
                   style: TextStyle(color: T.muted(context), fontSize: 12),
                   textAlign: TextAlign.center,
                 ),

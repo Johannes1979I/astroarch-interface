@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../app_version.dart';
 import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
@@ -36,9 +37,20 @@ class DashboardScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
-              child: Text(
-                '${state.devices.length} dev',
-                style: TextStyle(color: T.muted(context), fontSize: 12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Badge versione app: SEMPRE allineato all'APK installato.
+                  // La costante kAppVersion (lib/app_version.dart) deve
+                  // essere bumpata ad ogni release insieme a pubspec.yaml.
+                  Text('v$kAppVersion',
+                      style: TextStyle(color: T.accent(context),
+                          fontSize: 11, fontWeight: FontWeight.w700,
+                          fontFamily: 'monospace')),
+                  Text('${state.devices.length} dev',
+                      style: TextStyle(color: T.muted(context), fontSize: 10)),
+                ],
               ),
             ),
           ),

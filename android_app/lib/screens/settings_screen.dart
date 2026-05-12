@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../api/api_client.dart';
+import '../app_version.dart';
 import '../i18n/strings.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
@@ -89,7 +90,7 @@ class SettingsScreen extends StatelessWidget {
               ListTile(
                 leading: Icon(Icons.info_outline, color: T.accent(context)),
                 title: const Text('Astroarch Interface'),
-                subtitle: Text('${'Versione'.tr(context)} 0.2.18'),
+                subtitle: Text('${'Versione'.tr(context)} $kAppVersion'),
               ),
               const Divider(height: 1),
               ListTile(
