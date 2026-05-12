@@ -20,8 +20,22 @@ class GuideScreen extends StatefulWidget {
 class _GuideScreenState extends State<GuideScreen> {
   Future<void> _safe(Future Function() fn, String msg) async {
     try { await fn(); if (mounted) showSnack(context, msg); }
-    on ApiException catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true); }
-    catch (e) { if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true); }
+    on ApiException catch (e) {
+      if (mounted) showSnack(context,
+          '${'Errore: '.tr(context)}${_extractDetail(e.body)}', error: true);
+    }
+    catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
+    }
+  }
+
+  /// Estrae il campo "detail" dal body JSON di FastAPI, fallback al body.
+  String _extractDetail(String body) {
+    try {
+      final j = jsonDecode(body);
+      if (j is Map && j['detail'] != null) return j['detail'].toString();
+    } catch (_) {}
+    return body;
   }
 
   @override
@@ -265,12 +279,20 @@ class _GuideStarImageCardState extends State<_GuideStarImageCard> {
       // 409 = PHD2 senza stella selezionata o app_state non compatibile
       if (mounted) setState(() => _err = e.status == 409
           ? 'PHD2: nessuna stella selezionata. Premi FIND STAR.'.tr(context)
-          : '${'Errore: '.tr(context)}${e.body}');
+          : '${'Errore: '.tr(context)}${_extractDetailLocal(e.body)}');
     } catch (e) {
       if (mounted) setState(() => _err = e.toString());
     } finally {
       _inflight = false;
     }
+  }
+
+  String _extractDetailLocal(String body) {
+    try {
+      final j = jsonDecode(body);
+      if (j is Map && j['detail'] != null) return j['detail'].toString();
+    } catch (_) {}
+    return body;
   }
 
   @override

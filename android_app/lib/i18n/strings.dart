@@ -439,6 +439,21 @@ class L10n {
         '"Slew to target" would move the telescope far away.',
     'USA POSIZIONE MOUNT COME TARGET': 'USE MOUNT POSITION AS TARGET',
     'Target = posizione mount (': 'Target = mount position (',
+    'Target sospetto': 'Suspicious target',
+    'Hai scelto "Slew to target" ma in Ekos non c\'è alcun target impostato. '
+            'Lo Slew non saprebbe dove andare o porterebbe il telescopio a (0,0) — '
+            'vicino all\'orizzonte.':
+        'You chose "Slew to target" but Ekos has no target set. Slew would '
+        'not know where to go, or would move the telescope to (0,0) — near the horizon.',
+    'Hai scelto "Slew to target" ma il target Ekos è a ':
+        'You chose "Slew to target" but the Ekos target is ',
+    '° dalla posizione attuale.': '° from the current position.',
+    'Slew muoverà la montatura verso le coordinate TARGET, NON centrerà l\'oggetto '
+            'che hai inquadrato. Se non vuoi questo, aggiorna prima il target.':
+        'Slew will move the mount toward the TARGET coordinates, NOT center the '
+        'object currently in the field. If you don\'t want that, update the target first.',
+    'Aggiorna target = mount': 'Update target = mount',
+    'Procedi comunque': 'Proceed anyway',
     'RMS Tot': 'Total RMS',
     'Avvia guida': 'Start guiding',
     'Ferma guida': 'Stop guiding',

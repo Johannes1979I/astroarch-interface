@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -137,6 +138,43 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
 
   Future<void> _captureAndSolve(AppState s) async {
     if (s.api == null) return;
+
+    // PRE-FLIGHT: se l'utente sta per fare Slew to target e il target è
+    // molto distante dalla posizione attuale della montatura, Ekos
+    // slewerebbe il telescopio LONTANO dal soggetto inquadrato (è il
+    // bug "va in park" descritto dall'utente — Ekos sleva al target
+    // configurato, che però è stantio da una sessione precedente).
+    // Chiediamo conferma esplicita prima di partire.
+    if (_solverAction == 1 /* Slew to target */) {
+      final tgt = _full?['target'] as Map<String, dynamic>?;
+      final mount = _full?['mount_coords'] as Map<String, dynamic>?;
+      final tgtRa = (tgt?['ra_hours'] as num?)?.toDouble();
+      final tgtDec = (tgt?['dec_deg'] as num?)?.toDouble();
+      final mRa = (mount?['ra_hours'] as num?)?.toDouble();
+      final mDec = (mount?['dec_deg'] as num?)?.toDouble();
+      double distDeg = 0;
+      if (tgtRa != null && tgtDec != null && mRa != null && mDec != null) {
+        final dRa = (tgtRa - mRa) * 15.0 * math.cos(mDec * math.pi / 180.0);
+        final dDec = tgtDec - mDec;
+        distDeg = math.sqrt(dRa * dRa + dDec * dDec);
+      }
+      final noTarget = tgtRa == null || tgtDec == null
+          || (tgtRa.abs() < 0.001 && tgtDec.abs() < 0.001);
+      final stale = distDeg > 5.0;
+      if (noTarget || stale) {
+        final choice = await _confirmSlewDialog(noTarget, distDeg,
+            tgtRa, tgtDec, mRa, mDec);
+        if (choice == null) return; // cancel
+        if (choice == 'use_mount' && mRa != null && mDec != null) {
+          try {
+            await s.api!.alignEkosSet(targetRaHours: mRa, targetDecDeg: mDec);
+            await _poll();
+          } catch (_) {}
+        }
+        // choice == 'proceed' → procedi così com'è
+      }
+    }
+
     setState(() => _busy = true);
     try {
       await _savePrefs();
@@ -153,12 +191,82 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         showSnack(context, '${'Avviato in Ekos · '.tr(context)}${exp ?? "?"}s · bin ${_binIndex+1}×${_binIndex+1} · gain ${gain?.toInt() ?? "auto"}');
       }
     } on ApiException catch (e) {
-      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${e.body}', error: true);
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${_extractDetail(e.body)}', error: true);
     } catch (e) {
       if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Dialog che spiega che il target è probabilmente stantio e offre 3
+  /// opzioni: annulla, usa posizione mount come target (sicuro), procedi
+  /// così com'è (lo so cosa sto facendo).
+  Future<String?> _confirmSlewDialog(bool noTarget, double distDeg,
+      double? tgtRa, double? tgtDec, double? mRa, double? mDec) async {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(noTarget
+            ? 'Nessun target impostato'.tr(context)
+            : 'Target sospetto'.tr(context)),
+        content: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (noTarget)
+            Text('Hai scelto "Slew to target" ma in Ekos non c\'è alcun '
+                'target impostato. Lo Slew non saprebbe dove andare o '
+                'porterebbe il telescopio a (0,0) — vicino all\'orizzonte.'
+                .tr(context))
+          else ...[
+            Text('Hai scelto "Slew to target" ma il target Ekos è a '
+                '${distDeg.toStringAsFixed(1)}° dalla posizione attuale.'
+                .tr(context)),
+            const SizedBox(height: 10),
+            Text('Target: ${_hms(tgtRa)} ${_dms(tgtDec)}',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            Text('Mount:  ${_hms(mRa)} ${_dms(mDec)}',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            const SizedBox(height: 8),
+            Text(
+              'Slew muoverà la montatura verso le coordinate TARGET, NON '
+              'centrerà l\'oggetto che hai inquadrato. Se non vuoi questo, '
+              'aggiorna prima il target.'.tr(context),
+              style: TextStyle(color: T.warn(context), fontSize: 12),
+            ),
+          ],
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: Text('Annulla'.tr(context)),
+          ),
+          if (mRa != null && mDec != null)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'use_mount'),
+              child: Text('Aggiorna target = mount'.tr(context)),
+            ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: T.err(context)),
+            onPressed: () => Navigator.pop(ctx, 'proceed'),
+            child: Text('Procedi comunque'.tr(context)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Parsa il body JSON di una ApiException e ritorna solo il campo
+  /// "detail" (FastAPI standard), altrimenti il body grezzo.
+  /// Senza questo i messaggi d'errore apparivano come
+  ///   Errore: {"detail":"could not find star"}
+  /// — il fix lo riduce a
+  ///   Errore: could not find star
+  String _extractDetail(String body) {
+    try {
+      final j = jsonDecode(body);
+      if (j is Map && j['detail'] != null) return j['detail'].toString();
+    } catch (_) {}
+    return body;
   }
 
   Future<void> _abort(AppState s) async {
