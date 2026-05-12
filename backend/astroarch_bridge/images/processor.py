@@ -75,11 +75,22 @@ def _read_fits_bytes(data: bytes) -> tuple[np.ndarray, dict]:
 
 
 def _percentile_stretch(data: np.ndarray, low: float = 0.5, high: float = 99.5) -> np.ndarray:
-    """Auto-stretch alla Ekos/KStars: ZScale interval + MTF (asinh-like).
+    """Auto-stretch in stile PixInsight Screen Transfer Function (auto-STF) —
+    è la stessa famiglia di algoritmi che usa KStars FITS Viewer in auto.
 
-    Replica il default del FITS Viewer di KStars: black point determinato
-    dall'analisi mediana/MAD (ZScale come IRAF), midtone tipico ~0.05-0.1
-    per fare risaltare le stelle deboli.
+    Differenza chiave dalla versione precedente: il midtone `m` NON è fisso
+    (prima 0.05 saturava cieli inquinati o immagini con Vega nel fov), è
+    calcolato dalla mediana normalizzata dell'immagine in modo che essa
+    mappi al target di background (0.25, default PI). Risultato: immagini
+    scure vengono fortemente schiarite (m basso), immagini già brillanti
+    quasi non vengono toccate (m → 0.5).
+
+    Algoritmo:
+      1. Robust black/white via ZScale-like (median ± k·σ_MAD)
+      2. Normalizzazione lineare → [0,1]
+      3. Calcolo c = (median - black) / (white - black)
+      4. m = c·(1-T) / (c·(1-2T) + T)   con T = 0.25
+      5. Applicazione MTF:  out = (m-1)·x / ((2m-1)·x - m)
 
     Nota: low/high parametri ignorati ma mantenuti per backward compat.
     """
@@ -88,29 +99,40 @@ def _percentile_stretch(data: np.ndarray, low: float = 0.5, high: float = 99.5) 
         return np.zeros(data.shape, dtype=np.uint8)
     flat = data[finite].astype(np.float64)
 
-    # ZScale-like robust black/white points (alla IRAF/Ekos):
-    #   - median M
-    #   - MAD = median(|x - M|)
-    #   - black = M - 2.8 * MAD * 1.4826 (sigma equivalent)
-    #   - white = percentile alto per non saturare le stelle
     sample = flat
     if sample.size > 200_000:
-        # Sub-sample per velocità su immagini grandi
         idx = np.random.choice(sample.size, 200_000, replace=False)
         sample = sample[idx]
     median = float(np.median(sample))
     mad = float(np.median(np.abs(sample - median)))
-    sigma = mad * 1.4826  # MAD -> sigma normale
-    black = max(float(np.min(sample)), median - 2.8 * sigma)
-    white = float(np.percentile(sample, 99.5))
+    sigma_eq = mad * 1.4826 if mad > 0 else 1.0
+
+    # Shadow clipping a ~2.8σ sotto la mediana; white al 99.9 percentile
+    # (più morbido del 99.5 di prima → meno saturazione delle stelle).
+    black = max(float(np.min(sample)), median - 2.8 * sigma_eq)
+    white = float(np.percentile(sample, 99.9))
     if white <= black:
-        white = black + max(1.0, sigma)
+        white = black + max(1.0, sigma_eq)
 
-    norm = np.clip((data - black) / (white - black), 0.0, 1.0)
+    # Mediana NORMALIZZATA dopo clipping → input per il calcolo di m
+    span = max(white - black, 1e-9)
+    c = float(np.clip((median - black) / span, 0.0, 1.0))
 
-    # Asinh-like stretch via MTF con midtone basso (0.05) — accentua deboli
-    # come fa KStars in modalità auto-stretch.
-    m = 0.05
+    target_bg = 0.25  # default PixInsight: la mediana finisce a 25/255
+    if c <= 0.0:
+        m = target_bg
+    elif c >= 0.5:
+        # L'immagine è già brillante (mediana sopra il 50% dell'intervallo
+        # dinamico) → nessuno stretch dei toni medi, m = 0.5 = identità.
+        m = 0.5
+    else:
+        num = c * (1.0 - target_bg)
+        den = c * (1.0 - 2.0 * target_bg) + target_bg
+        m = num / den if abs(den) > 1e-9 else target_bg
+        m = max(0.001, min(0.5, m))
+
+    # Stretch
+    norm = np.clip((data - black) / span, 0.0, 1.0)
     denom = ((2.0 * m - 1.0) * norm) - m
     denom = np.where(np.abs(denom) < 1e-9, 1e-9, denom)
     stretched = (m - 1.0) * norm / denom
