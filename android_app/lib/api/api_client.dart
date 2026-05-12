@@ -371,6 +371,28 @@ class ApiClient {
   Future<void> focuserAutofocusAbort(String runId) =>
       post('/api/focuser/autofocus/$runId/abort');
 
+  // === EKOS AUTOFOCUS ===
+  Future<Map<String, dynamic>> focuserEkosState({String train = ''}) =>
+      get('/api/focuser/ekos_state', {'train': train});
+  Future<Map<String, dynamic>> focuserEkosStart({
+    String train = '', int? boxSize, int? stepSize, int? maxTravel,
+    double? tolerance, List<int>? binning, String? filter,
+  }) => post('/api/focuser/ekos_start', {
+        'train': train,
+        if (boxSize != null) 'box_size': boxSize,
+        if (stepSize != null) 'step_size': stepSize,
+        if (maxTravel != null) 'max_travel': maxTravel,
+        if (tolerance != null) 'tolerance': tolerance,
+        if (binning != null) 'binning': binning,
+        if (filter != null) 'filter': filter,
+      });
+  Future<Map<String, dynamic>> focuserEkosAbort({String train = ''}) =>
+      post('/api/focuser/ekos_abort', {'train': train});
+  Future<Map<String, dynamic>> focuserEkosCurve() =>
+      get('/api/focuser/ekos_curve');
+  Future<Map<String, dynamic>> focuserEkosCurveReset() =>
+      post('/api/focuser/ekos_curve_reset');
+
   // Filter wheel
   Future<Map<String, dynamic>> filterStatus({String? device}) =>
       get('/api/filter_wheel/status', _maybe(device));

@@ -515,6 +515,28 @@ class L10n {
 
     // ==== FOCUS =============================================================
     'Movimento manuale': 'Manual movement',
+    'Autofocus Ekos': 'Ekos Autofocus',
+    'Autofocus iterativo (bridge)': 'Iterative autofocus (bridge)',
+    'IMPOSTAZIONI EKOS (live)': 'EKOS SETTINGS (live)',
+    'Lettura impostazioni da Ekos…': 'Reading settings from Ekos…',
+    'Ekos pronto per autofocus': 'Ekos ready for autofocus',
+    'Ekos NON pronto (manca camera/focuser?)':
+        'Ekos NOT ready (missing camera/focuser?)',
+    '● live': '● live',
+    'PARAMETRI EKOS (override opzionali)': 'EKOS PARAMETERS (optional overrides)',
+    'USA QUELLI DI EKOS': 'USE EKOS DEFAULTS',
+    'L\'autofocus usa i parametri configurati in Ekos sul desktop.':
+        'Autofocus uses the parameters set in the Ekos desktop UI.',
+    'Override attivi: l\'app li imposta in Ekos prima di Start.':
+        'Overrides active: the app pushes them to Ekos before Start.',
+    'Max travel': 'Max travel',
+    'Tolerance (%)': 'Tolerance (%)',
+    'AVVIA AUTOFOCUS EKOS': 'START EKOS AUTOFOCUS',
+    'EKOS AUTOFOCUS IN CORSO…': 'EKOS AUTOFOCUS RUNNING…',
+    'Autofocus Ekos avviato': 'Ekos autofocus started',
+    'Abort Ekos AF': 'Ekos AF aborted',
+    'V-curve apparirà qui durante l\'autofocus':
+        'V-curve will appear here during autofocus',
     'Posizione assoluta': 'Absolute position',
     'Vai': 'Go',
     'Autofocus iterativo': 'Iterative autofocus',

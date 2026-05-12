@@ -15,15 +15,25 @@ class FocusScreen extends StatefulWidget {
 }
 
 class _FocusScreenState extends State<FocusScreen> {
-  // Autofocus run state
+  // Autofocus run state (bridge iterativo)
   String? _runId;
   Map<String, dynamic>? _runStatus;
   Timer? _pollTimer;
 
-  // AF parameters
+  // AF parameters bridge
   int _stepSize = 50;
   int _nSteps = 9;
   double _exposureSec = 2.0;
+
+  // === Ekos autofocus state ===
+  Timer? _ekosPollTimer;
+  Map<String, dynamic>? _ekosState;
+  Map<String, dynamic>? _ekosCurve;
+  // Parametri Ekos (opzionali — se nulli il bridge non li forza,
+  // Ekos usa quelli configurati nella sua UI)
+  int? _ekStepSize;
+  int? _ekMaxTravel;
+  double? _ekTolerance;
 
   Future<void> _safe(Future Function() fn, String okMsg) async {
     try { await fn(); if (mounted) showSnack(context, okMsg); }
@@ -78,8 +88,72 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Pollo lo stato di Ekos Focus ogni 1.5s. Cattura sia info live
+    // (camera/focuser/filter) sia la V-curve via signal newHFR
+    // intercettato dal bridge.
+    _ekosPollTimer = Timer.periodic(
+        const Duration(milliseconds: 1500), (_) => _pollEkosFocus());
+    Future.microtask(_pollEkosFocus);
+  }
+
+  Future<void> _pollEkosFocus() async {
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    try {
+      final st = await s.api!.focuserEkosState();
+      final cv = await s.api!.focuserEkosCurve();
+      if (!mounted) return;
+      setState(() {
+        _ekosState = st;
+        _ekosCurve = cv;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _startEkosAutofocus(AppState s) async {
+    if (s.api == null) return;
+    try {
+      await s.api!.focuserEkosCurveReset();
+      await s.api!.focuserEkosStart(
+        stepSize: _ekStepSize,
+        maxTravel: _ekMaxTravel,
+        tolerance: _ekTolerance,
+      );
+      if (mounted) showSnack(context, 'Autofocus Ekos avviato'.tr(context));
+      _pollEkosFocus();
+    } on ApiException catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}${_extractDetail(e.body)}', error: true);
+    } catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
+    }
+  }
+
+  Future<void> _abortEkosAutofocus(AppState s) async {
+    if (s.api == null) return;
+    try {
+      await s.api!.focuserEkosAbort();
+      if (mounted) showSnack(context, 'Abort Ekos AF'.tr(context));
+      _pollEkosFocus();
+    } catch (e) {
+      if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
+    }
+  }
+
+  String _extractDetail(String body) {
+    try {
+      final j = body.startsWith('{') ? body : null;
+      if (j == null) return body;
+      final m = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(body);
+      return m?.group(1) ?? body;
+    } catch (_) { return body; }
+  }
+
+  @override
   void dispose() {
     _pollTimer?.cancel();
+    _ekosPollTimer?.cancel();
     super.dispose();
   }
 
@@ -132,7 +206,37 @@ class _FocusScreenState extends State<FocusScreen> {
                 ]),
                 SectionLabel('Posizione assoluta'.tr(context)),
                 _absInput(s, position),
-                SectionLabel('Autofocus iterativo'.tr(context)),
+                // ====== EKOS AUTOFOCUS (preferito) ======
+                SectionLabel('Autofocus Ekos'.tr(context)),
+                _ekosInfoCard(s),
+                const SizedBox(height: 8),
+                _ekosLastFrameCard(s),
+                const SizedBox(height: 8),
+                _ekosParamsCard(),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: PrimaryButton(
+                    label: _isEkosAfRunning()
+                        ? 'EKOS AUTOFOCUS IN CORSO…'.tr(context)
+                        : 'AVVIA AUTOFOCUS EKOS'.tr(context),
+                    icon: Icons.auto_awesome,
+                    onPressed: _isEkosAfRunning() ? null
+                        : () => _startEkosAutofocus(s),
+                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: GhostButton(
+                    label: 'ABORT'.tr(context), icon: Icons.stop, danger: true,
+                    onPressed: _isEkosAfRunning()
+                        ? () => _abortEkosAutofocus(s) : null,
+                  )),
+                ]),
+                const SizedBox(height: 8),
+                if (_ekosCurve != null) _ekosVCurveCard(),
+                const SizedBox(height: 4),
+                if (_ekosCurve != null) _ekosLogCard(),
+
+                // ====== AUTOFOCUS ITERATIVO BRIDGE (legacy/manuale) ======
+                SectionLabel('Autofocus iterativo (bridge)'.tr(context)),
                 _autofocusParams(),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -169,6 +273,312 @@ class _FocusScreenState extends State<FocusScreen> {
     final st = _runStatus?['status'];
     return st == 'running' || st == 'aborting';
   }
+
+  // === EKOS UI helpers ===
+
+  bool _isEkosAfRunning() {
+    // status_label di Ekos: idle/complete/failed/aborted/waiting/progress/
+    // frame_adjusted/framing/changing. "Running" = progress|framing|
+    // waiting|frame_adjusted|changing.
+    final lbl = _ekosCurve?['last_status_label']?.toString()
+        ?? _ekosState?['status_label']?.toString() ?? '';
+    return lbl == 'progress' || lbl == 'framing' || lbl == 'waiting'
+        || lbl == 'frame_adjusted' || lbl == 'changing';
+  }
+
+  Widget _ekosInfoCard(AppState s) {
+    final e = _ekosState;
+    if (e == null) {
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: T.panel(context), borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: T.line(context)),
+        ),
+        child: Row(children: [
+          const SizedBox(width: 14, height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 10),
+          Text('Lettura impostazioni da Ekos…'.tr(context),
+              style: TextStyle(color: T.muted(context), fontSize: 12)),
+        ]),
+      );
+    }
+    final canAf = e['can_autofocus'] == true;
+    final statusLbl = (e['status_label'] ?? 'unknown').toString();
+    Color statusColor;
+    switch (statusLbl) {
+      case 'complete': statusColor = T.ok(context); break;
+      case 'failed': case 'aborted': statusColor = T.err(context); break;
+      case 'progress': case 'framing': case 'waiting':
+      case 'frame_adjusted': case 'changing':
+        statusColor = T.accent(context); break;
+      default: statusColor = T.muted(context);
+    }
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: T.panel(context), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: T.line(context)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('IMPOSTAZIONI EKOS (live)'.tr(context),
+              style: TextStyle(color: T.muted(context), fontSize: 10,
+                  letterSpacing: 1.4, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: statusColor.withValues(alpha: 0.6)),
+            ),
+            child: Text(statusLbl.toUpperCase(),
+                style: TextStyle(color: statusColor, fontSize: 10,
+                    fontWeight: FontWeight.w700, letterSpacing: .8)),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        _kv('Camera', e['camera']?.toString() ?? '—'),
+        _kv('Focuser', e['focuser']?.toString() ?? '—'),
+        _kv('Filter wheel', e['filter_wheel']?.toString() ?? '—'),
+        _kv('Filter', e['filter']?.toString() ?? '—'),
+        const SizedBox(height: 4),
+        Row(children: [
+          Icon(canAf ? Icons.check_circle : Icons.error,
+              size: 12, color: canAf ? T.ok(context) : T.err(context)),
+          const SizedBox(width: 4),
+          Text(canAf
+              ? 'Ekos pronto per autofocus'.tr(context)
+              : 'Ekos NON pronto (manca camera/focuser?)'.tr(context),
+              style: TextStyle(fontSize: 11,
+                  color: canAf ? T.ok(context) : T.err(context))),
+          const Spacer(),
+          if (e['monitor_running'] == true)
+            Text('● live'.tr(context), style: TextStyle(
+                fontSize: 10, color: T.ok(context))),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _ekosLastFrameCard(AppState s) {
+    // Riusa il frame BLOB intercept (lo stesso flusso usato da Plate Solve).
+    // Durante l'autofocus Ekos cattura sulla camera primaria, e il bridge
+    // intercetta i BLOB via enableBLOB Also.
+    final hasFrame = s.lastFrameJpeg != null;
+    final m = s.lastFrameMeta;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black, borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: T.line(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: AspectRatio(
+        aspectRatio: 1.7,
+        child: Stack(fit: StackFit.expand, children: [
+          if (hasFrame)
+            InteractiveViewer(minScale: 1, maxScale: 5,
+              child: Image.memory(s.lastFrameJpeg!, fit: BoxFit.contain,
+                  gaplessPlayback: true))
+          else
+            Center(child: Text('Nessuna immagine ancora'.tr(context),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 12))),
+          if (hasFrame) Positioned(top: 6, right: 6, child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(color: Colors.black54,
+                borderRadius: BorderRadius.circular(4)),
+            child: Text(
+              'HFR ${(m['hfr'] as num?)?.toStringAsFixed(2) ?? "—"} · '
+              '★ ${m['stars'] ?? "—"}',
+              style: const TextStyle(color: Colors.white,
+                  fontFamily: 'monospace', fontSize: 9),
+            ),
+          )),
+        ]),
+      ),
+    );
+  }
+
+  Widget _ekosParamsCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: T.panel(context), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: T.line(context)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('PARAMETRI EKOS (override opzionali)'.tr(context),
+              style: TextStyle(color: T.muted(context), fontSize: 10,
+                  letterSpacing: 1.4, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          if (_ekStepSize != null || _ekMaxTravel != null || _ekTolerance != null)
+            TextButton(
+              onPressed: () => setState(() {
+                _ekStepSize = null; _ekMaxTravel = null; _ekTolerance = null;
+              }),
+              child: Text('USA QUELLI DI EKOS'.tr(context),
+                  style: TextStyle(fontSize: 10, color: T.accent(context))),
+            ),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          (_ekStepSize == null && _ekMaxTravel == null && _ekTolerance == null)
+              ? 'L\'autofocus usa i parametri configurati in Ekos sul desktop.'.tr(context)
+              : 'Override attivi: l\'app li imposta in Ekos prima di Start.'.tr(context),
+          style: TextStyle(color: T.muted(context), fontSize: 11,
+              fontStyle: FontStyle.italic),
+        ),
+        const SizedBox(height: 4),
+        Row(children: [
+          Expanded(child: _slider('Step size'.tr(context),
+              (_ekStepSize ?? 250).toDouble(), 50, 1000,
+              (v) => setState(() => _ekStepSize = v.toInt()),
+              formatter: (v) => v.toStringAsFixed(0))),
+        ]),
+        Row(children: [
+          Expanded(child: _slider('Max travel'.tr(context),
+              (_ekMaxTravel ?? 10000).toDouble(), 1000, 50000,
+              (v) => setState(() => _ekMaxTravel = v.toInt()),
+              formatter: (v) => v.toStringAsFixed(0))),
+        ]),
+        Row(children: [
+          Expanded(child: _slider('Tolerance (%)'.tr(context),
+              (_ekTolerance ?? 1.0), 0.1, 10.0,
+              (v) => setState(() => _ekTolerance = v),
+              formatter: (v) => '${v.toStringAsFixed(1)}%')),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _ekosVCurveCard() {
+    final samples = (_ekosCurve?['samples'] as List? ?? []).cast<Map>();
+    if (samples.isEmpty) {
+      return Container(
+        height: 140,
+        decoration: BoxDecoration(
+          color: T.panel(context), borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: T.line(context)),
+        ),
+        child: Center(child: Text('V-curve apparirà qui durante l\'autofocus'.tr(context),
+            style: TextStyle(color: T.muted(context), fontSize: 12))),
+      );
+    }
+    final spots = <FlSpot>[];
+    double minHfr = double.infinity, maxHfr = 0;
+    int? minPos, maxPos;
+    for (final s in samples) {
+      final p = (s['position'] as num?)?.toInt();
+      final h = (s['hfr'] as num?)?.toDouble();
+      if (p == null || h == null) continue;
+      spots.add(FlSpot(p.toDouble(), h));
+      if (h < minHfr) minHfr = h;
+      if (h > maxHfr) maxHfr = h;
+      if (minPos == null || p < minPos) minPos = p;
+      if (maxPos == null || p > maxPos) maxPos = p;
+    }
+    if (spots.isEmpty) {
+      return const SizedBox();
+    }
+    final best = samples.reduce((a, b) =>
+        ((a['hfr'] as num) < (b['hfr'] as num)) ? a : b);
+    final bestPos = (best['position'] as num).toInt();
+    final bestHfr = (best['hfr'] as num).toDouble();
+
+    return Container(
+      height: 200,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      decoration: BoxDecoration(
+        color: T.panel(context), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: T.line(context)),
+      ),
+      child: Column(children: [
+        Row(children: [
+          Text('V-CURVE EKOS · ${spots.length} pt'.tr(context),
+              style: TextStyle(color: T.muted(context), fontSize: 10,
+                  letterSpacing: 1.4, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Text('best: pos $bestPos HFR ${bestHfr.toStringAsFixed(2)}',
+              style: TextStyle(color: T.ok(context), fontSize: 11,
+                  fontFamily: 'monospace', fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 4),
+        Expanded(child: LineChart(LineChartData(
+          minY: 0,
+          maxY: maxHfr * 1.15,
+          gridData: const FlGridData(show: false),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(sideTitles: SideTitles(
+              showTitles: true, reservedSize: 28,
+              getTitlesWidget: (v, _) => Text(v.toStringAsFixed(1),
+                  style: TextStyle(color: T.muted(context), fontSize: 9,
+                      fontFamily: 'monospace')),
+            )),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(
+              showTitles: true, reservedSize: 18,
+              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
+                  style: TextStyle(color: T.muted(context), fontSize: 9,
+                      fontFamily: 'monospace')),
+            )),
+            topTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+          ),
+          borderData: FlBorderData(show: false),
+          extraLinesData: ExtraLinesData(verticalLines: [
+            VerticalLine(x: bestPos.toDouble(),
+                color: T.ok(context).withValues(alpha: 0.7),
+                strokeWidth: 1.5, dashArray: [4, 3]),
+          ]),
+          lineBarsData: [LineChartBarData(
+            spots: spots,
+            isCurved: false,
+            color: T.accent(context),
+            barWidth: 1.5,
+            dotData: FlDotData(show: true,
+              getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+                  radius: 3, color: T.accent(context),
+                  strokeWidth: 0)),
+          )],
+        ))),
+      ]),
+    );
+  }
+
+  Widget _ekosLogCard() {
+    final log = (_ekosCurve?['log_tail'] as List? ?? []).cast<String>();
+    if (log.isEmpty) return const SizedBox();
+    return Container(
+      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(maxHeight: 100),
+      decoration: BoxDecoration(
+        color: const Color(0xFF05080e),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: T.line(context)),
+      ),
+      child: SingleChildScrollView(
+        reverse: true,
+        child: Text(log.join('\n'),
+            style: const TextStyle(fontFamily: 'monospace',
+                fontSize: 10, color: Color(0xFF9aa3b6), height: 1.4)),
+      ),
+    );
+  }
+
+  Widget _kv(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Row(children: [
+          SizedBox(width: 100, child: Text('$k:',
+              style: TextStyle(color: T.muted(context), fontSize: 11))),
+          Expanded(child: Text(v,
+              style: const TextStyle(fontSize: 12,
+                  fontFamily: 'monospace', fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis)),
+        ]),
+      );
 
   Widget _autofocusParams() {
     return Column(children: [
