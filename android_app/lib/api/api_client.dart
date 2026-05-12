@@ -154,6 +154,10 @@ class ApiClient {
   Future<Map<String, dynamic>> ekosDisconnectDevices() => post('/api/system/ekos_disconnect_devices');
   Future<Map<String, dynamic>> ekosToggle() => post('/api/system/ekos_toggle');
 
+  /// QR di accoppiamento: ritorna {host, port, token, payload, png_base64}
+  /// generato dal bridge con l'IP Tailscale (NON l'IP LAN).
+  Future<Map<String, dynamic>> pairingQr() => get('/api/system/qr');
+
   // Align
   Future<Map<String, dynamic>> alignStatus() => get('/api/align/status');
   Future<void> alignSolveLastFrame() => post('/api/align/solve_last_frame');

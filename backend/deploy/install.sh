@@ -65,17 +65,43 @@ systemctl daemon-reload
 systemctl enable astroarch-bridge.service
 systemctl restart astroarch-bridge.service
 
-# 6. mostra token
+# 6. mostra token + URL su LAN e Tailscale
+# La URL Tailscale è quella che il telefono userà fuori casa, quindi va
+# stampata in evidenza. La LAN è utile solo da casa.
 sleep 1
 TOKEN_FILE="$HOME_DIR/.config/astroarch-bridge/token"
+
+# Risolve l'IP "esterno" (Tailscale) — fallback a LAN, poi 127.0.0.1.
+TS_IP=""
+if command -v tailscale &>/dev/null; then
+  TS_IP="$(tailscale ip -4 2>/dev/null | head -1)"
+fi
+LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[[ -z "$LAN_IP" ]] && LAN_IP="127.0.0.1"
+PRIMARY_IP="${TS_IP:-$LAN_IP}"
+
 if [[ -f "$TOKEN_FILE" ]]; then
   echo
   echo "==> astroarch-bridge installed and running"
-  echo "    URL:   http://$(hostname -I | awk '{print $1}'):8765"
+  echo
+  if [[ -n "$TS_IP" ]]; then
+    echo "    URL (Tailscale, da fuori casa):"
+    echo "      http://${TS_IP}:8765"
+    echo "    URL (LAN, solo sulla stessa WiFi):"
+    echo "      http://${LAN_IP}:8765"
+  else
+    echo "    URL: http://${PRIMARY_IP}:8765"
+    echo "    NOTA: Tailscale non rilevato. Per accedere fuori casa,"
+    echo "          installa Tailscale: sudo pacman -S tailscale && sudo tailscale up"
+  fi
+  echo
   echo "    Token: $(cat "$TOKEN_FILE")"
   echo
-  echo "    Status: systemctl status astroarch-bridge"
-  echo "    Logs:   journalctl -u astroarch-bridge -f"
+  echo "    QR di accoppiamento (con IP Tailscale):"
+  echo "      curl http://${PRIMARY_IP}:8765/api/system/qr?fmt=png -o pairing-qr.png"
+  echo
+  echo "    Status: systemctl --user status astroarch-bridge"
+  echo "    Logs:   journalctl --user -u astroarch-bridge -f"
 else
   echo "==> installed but token file not yet created (service may still be starting)"
 fi

@@ -91,6 +91,20 @@ class L10n {
     'Tema standard più chiaro': 'Brighter standard theme',
     'Versione': 'Version',
     'Info app': 'App info',
+    'Accoppiamento': 'Pairing',
+    'Mostra QR di accoppiamento': 'Show pairing QR',
+    'Per configurare un altro dispositivo': 'To pair another device',
+    'QR di accoppiamento': 'Pairing QR',
+    'Scansiona dall\'app sul nuovo dispositivo':
+        'Scan from the app on the new device',
+    'Oppure inserisci a mano': 'Or enter manually',
+    'Copia token': 'Copy token',
+    'Token copiato': 'Token copied',
+    'L\'host nel QR è l\'IP Tailscale del Raspberry: '
+            'il QR funziona da qualsiasi rete con Tailscale attivo. '
+            'Per la LAN usa l\'IP locale del Raspberry.':
+        'The QR encodes the Raspberry\'s Tailscale IP: it works from any '
+        'network with Tailscale active. For LAN use the local IP instead.',
 
     // ==== BOTTOM NAV ========================================================
     'Dash': 'Dash',

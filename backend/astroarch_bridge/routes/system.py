@@ -295,3 +295,100 @@ async def ekos_toggle(bridge: Bridge = Depends(get_bridge)) -> dict:
                           "org.kde.kstars.Ekos.connectDevices")
         action = "starting"
     return {"ok": True, "from": cur, "action": action}
+
+
+# ============================================================================
+# QR DI ACCOPPIAMENTO con IP Tailscale
+# ============================================================================
+#
+# Il QR mostrato dalla dashboard desktop usa l'IP locale (LAN) come primo
+# tentativo. Funziona se telefono e RPi sono sulla stessa WiFi, ma da fuori
+# casa serve l'IP Tailscale.
+# Questo endpoint genera il QR SEMPRE con l'IP Tailscale (se disponibile),
+# fallback all'IP LAN, fallback finale 127.0.0.1.
+#
+# Endpoint:
+#   GET /api/system/qr           → JSON {host, port, token, payload, png_base64}
+#   GET /api/system/qr?fmt=png   → image/png binario (Content-Type: image/png)
+
+def _bridge_host_for_qr() -> str:
+    """Determina l'host da mettere nel QR.
+    Ordine: tailscale ip -4 → primo IP non-loopback non-link-local → '127.0.0.1'.
+    """
+    import subprocess
+    # Tentativo 1: Tailscale
+    try:
+        r = subprocess.run(["tailscale", "ip", "-4"],
+                           capture_output=True, text=True, timeout=2.0)
+        if r.returncode == 0:
+            ip = r.stdout.strip().splitlines()[0].strip() if r.stdout.strip() else ""
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+    # Tentativo 2: hostname -I (prima interfaccia LAN, no loopback)
+    try:
+        r = subprocess.run(["hostname", "-I"],
+                           capture_output=True, text=True, timeout=1.0)
+        if r.returncode == 0:
+            for ip in r.stdout.strip().split():
+                if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+                    return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
+@router.get("/qr")
+async def qr_pairing(fmt: str = "json"):
+    """Genera il QR di accoppiamento con l'IP Tailscale.
+
+    Query:
+      fmt: "json" (default, ritorna anche PNG in base64) oppure "png" (binary)
+    """
+    import base64
+    import io
+    import json as _json
+    from fastapi.responses import Response
+
+    from ..config import get_settings
+    settings = get_settings()
+    host = _bridge_host_for_qr()
+    port = settings.port
+    token = settings.resolve_token()  # legge da file se .token è vuoto
+
+    payload = _json.dumps({
+        "v": 1,
+        "type": "astroarch-bridge",
+        "host": host,
+        "port": port,
+        "token": token,
+    }, separators=(",", ":"))
+
+    # Genera PNG del QR (M error correction, dimensioni standard per scan rapido)
+    try:
+        import qrcode
+        import qrcode.constants
+        qr = qrcode.QRCode(version=None,
+                           error_correction=qrcode.constants.ERROR_CORRECT_M,
+                           box_size=8, border=2)
+        qr.add_data(payload)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"QR generation failed: {e}")
+
+    if fmt.lower() == "png":
+        return Response(content=png_bytes, media_type="image/png",
+                        headers={"Cache-Control": "no-store"})
+
+    return {
+        "host": host,
+        "port": port,
+        "token": token,
+        "payload": payload,
+        "png_base64": base64.b64encode(png_bytes).decode("ascii"),
+    }
