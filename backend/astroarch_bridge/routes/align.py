@@ -568,56 +568,91 @@ async def ekos_capture_and_solve(
     """
     from .capture_ekos import _dbus_call, EKOS_DBUS_SERVICE
     from .camera import _resolve_gain
+    import logging as _log
+    _logger = _log.getLogger("astroarch_bridge.align")
     align_path = "/KStars/Ekos/Align"
 
-    # NOTA: NON modifichiamo UPLOAD_MODE del driver — Ekos lo gestisce a modo suo.
-    # Il bridge riceve in parallelo i BLOB via enableBLOB (secondo client INDI),
-    # senza salvare nulla su disco e senza interferire con Ekos.
-    cameras = await bridge.state.find_devices_by_role("CCD_EXPOSURE")
-    cam = None
-    if cameras:
-        cam = cameras[0]
-        for c in cameras:
-            if "asi290" not in c.lower() and "asi120" not in c.lower():
-                cam = c
-                break
-
-    # Setup exposure/gain SULLA CAMERA via INDI prima di chiamare Ekos.
-    # Ekos in mode "Usa corrente" prenderà questi valori al prossimo scatto.
+    # BUG FIX v0.2.23: prima di questa release il backend chiamava
+    #   bridge.indi.send_number(cam, "CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": ...})
+    # PRIMA di Ekos.Align.captureAndSolve(). Era SBAGLIATO: in INDI
+    # settare CCD_EXPOSURE_VALUE non "imposta" la posa, AVVIA L'ESPOSIZIONE.
+    # Risultato: l'esposizione partiva fuori controllo Ekos, Ekos vedeva
+    # la camera occupata, scriveva nel log "Impossibile acquisire se
+    # l'esposizione della fotocamera è in corso, nuovo tentativo tra 10
+    # secondi…", riprovava, e il sequencing si rompeva — questo è
+    # plausibilmente il motivo per cui "il solving da Ekos funziona ma
+    # dalla app no" (l'utente lo dice dal 12 maggio).
+    # Soluzione: NON tocchiamo più la camera. captureAndSolve usa le
+    # impostazioni configurate nella UI di Ekos Align (esposizione, gain,
+    # binning, train). Il binning ha un setter dedicato e quello lo
+    # teniamo. Esposizione e gain restano gestiti SOLO da Ekos GUI per
+    # ora — finché non troviamo un metodo DBus pulito per impostarli
+    # senza side-effect.
     exposure = payload.get("exposure_sec")
     gain = payload.get("gain")
-    if cam is not None and (exposure is not None or gain is not None):
-        if exposure is not None:
-            try:
-                await bridge.indi.send_number(cam, "CCD_EXPOSURE",
-                    {"CCD_EXPOSURE_VALUE": float(exposure)})
-            except Exception:
-                pass
-        if gain is not None:
-            try:
-                _, prop_name, elt_name = await _resolve_gain(bridge, cam)
-                if prop_name and elt_name:
-                    await bridge.indi.send_number(cam, prop_name,
-                        {elt_name: float(gain)})
-                else:
-                    await bridge.indi.send_number(cam, "CCD_GAIN",
-                        {"GAIN": float(gain)})
-            except Exception:
-                pass
+    if exposure is not None or gain is not None:
+        _logger.info("ekos_capture_and_solve: ignoring exposure/gain from app "
+                     "(would start a rogue INDI exposure conflicting with Ekos). "
+                     "Set them in Ekos Align UI. Got exposure=%s gain=%s",
+                     exposure, gain)
 
-    # Setup binning
+    # Setup binning — è un combo box in Ekos, no side effects
     bin_index = payload.get("bin_index")
     if bin_index is not None:
+        _logger.info("ekos_capture_and_solve: setBinningIndex(%d)", int(bin_index))
         await _dbus_call(EKOS_DBUS_SERVICE, align_path,
                           "org.kde.kstars.Ekos.Align.setBinningIndex",
                           str(int(bin_index)))
 
-    # Setup target
+    # Setup target. NB: l'app normalmente NON manda questi, lascia che
+    # Ekos usi il target già impostato (da KStars centering, scheduler, o
+    # dialog "Aggiorna target = mount" della Plate Solve tab).
     if payload.get("target_ra_hours") is not None and payload.get("target_dec_deg") is not None:
+        tra = float(payload["target_ra_hours"])
+        tdc = float(payload["target_dec_deg"])
+        _logger.info("ekos_capture_and_solve: setTargetCoords(ra=%.4fh, dec=%.4f°)",
+                     tra, tdc)
         await _dbus_call(EKOS_DBUS_SERVICE, align_path,
                           "org.kde.kstars.Ekos.Align.setTargetCoords",
-                          str(float(payload["target_ra_hours"])),
-                          str(float(payload["target_dec_deg"])))
+                          str(tra), str(tdc))
+
+    # Verifica e logga lo stato PRE-CAPTURE: target effettivo in Ekos
+    # + posizione attuale mount. Diagnostica preziosa per quando l'utente
+    # vede comportamenti strani della centratura.
+    try:
+        raw = await _dbus_call_literal(align_path,
+            "org.kde.kstars.Ekos.Align.getTargetCoords")
+        tgt = _parse_dbus_array(raw)
+        if len(tgt) >= 2:
+            _logger.info("ekos_capture_and_solve: PRE-CHECK Ekos target = "
+                         "ra=%.4fh dec=%.4f°", tgt[0], tgt[1])
+        mount_devs = await bridge.state.find_devices_by_role("EQUATORIAL_EOD_COORD")
+        if mount_devs:
+            mp = await bridge.state.get_property(mount_devs[0], "EQUATORIAL_EOD_COORD")
+            if mp:
+                m_ra = m_dec = None
+                for e in mp.get("elements", []):
+                    if e["name"] == "RA": m_ra = e.get("value")
+                    if e["name"] == "DEC": m_dec = e.get("value")
+                _logger.info("ekos_capture_and_solve: PRE-CHECK Mount = "
+                             "ra=%.4fh dec=%.4f° state=%s",
+                             m_ra or 0, m_dec or 0, mp.get("state"))
+                if len(tgt) >= 2 and m_ra is not None and m_dec is not None:
+                    # Distanza grossolana (gradi) tra target e mount
+                    import math as _m
+                    d_ra = (tgt[0] - m_ra) * 15.0 * _m.cos(_m.radians(m_dec))
+                    d_dec = tgt[1] - m_dec
+                    dist = _m.sqrt(d_ra * d_ra + d_dec * d_dec)
+                    _logger.info("ekos_capture_and_solve: PRE-CHECK "
+                                 "target↔mount distance = %.2f°", dist)
+                    if dist > 30.0:
+                        _logger.warning(
+                            "ekos_capture_and_solve: ⚠ target is %.1f° "
+                            "from mount — 'Slew to target' will move the "
+                            "telescope FAR from the current sky field",
+                            dist)
+    except Exception as _e:
+        _logger.warning("ekos_capture_and_solve: pre-check failed: %s", _e)
 
     # Solver action: Ekos AlignSolverAction enum: 0=Sync, 1=Slew, 2=Nothing.
     #

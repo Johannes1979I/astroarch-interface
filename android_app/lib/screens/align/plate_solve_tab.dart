@@ -101,19 +101,12 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       if (!wasComplete && nowComplete) {
         final sol = f['solution'] as Map<String, dynamic>?;
         final tgt = f['target'] as Map<String, dynamic>?;
-        // Quando l'utente sceglie Sync, dopo un solve riuscito aggiorniamo
-        // ANCHE il target di Ekos alla posizione solvata. Così se in seguito
-        // tappa "Slew to target", il target non sarà stantio.
-        if (sol != null && _solverAction == 0 /* Sync */) {
-          final ra = (sol['ra_hours'] as num?)?.toDouble();
-          final dec = (sol['dec_deg'] as num?)?.toDouble();
-          if (ra != null && dec != null && s.api != null) {
-            try {
-              await s.api!.alignEkosSet(
-                  targetRaHours: ra, targetDecDeg: dec);
-            } catch (_) {}
-          }
-        }
+        // v0.2.23: rimosso l'auto-update del target dopo Sync. Era stato
+        // aggiunto in v0.2.20 con buone intenzioni, ma in pratica modifica
+        // lo stato di Ekos senza che l'utente lo veda — confonde l'utente
+        // se poi cambia chip su Slew e si chiede perché ora il target è
+        // diverso. Meglio modificarlo SOLO esplicitamente via il dialog
+        // "Aggiorna target = mount" o il pulsante apposito.
         if (sol != null) {
           _history.insert(0, {
             'ts': DateTime.now(),
