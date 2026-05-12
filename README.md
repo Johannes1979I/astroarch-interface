@@ -3,7 +3,7 @@
 > **Full remote control of an AstroArch astronomical observatory from your Android smartphone.**
 > Mobile-friendly clone of KStars/Ekos with all the essential features for an astrophotography session.
 
-[![Version](https://img.shields.io/badge/version-0.2.14-f5a623?style=flat-square)](https://github.com/Johannes1979I/astroarch-interface/releases)
+[![Version](https://img.shields.io/badge/version-0.2.28-f5a623?style=flat-square)](https://github.com/Johannes1979I/astroarch-interface/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Android-8.0%2B-green?style=flat-square&logo=android)](#)
 [![Backend](https://img.shields.io/badge/Backend-Python%203.11%2B-blue?style=flat-square&logo=python)](#)
@@ -161,26 +161,123 @@ The app **does NOT replace Ekos**: it works alongside it. Ekos keeps running on 
 
 ---
 
-## Installation
+## 🚀 Quick start (AstroArch users)
 
-See [DEPLOY.md](DEPLOY.md) for full instructions.
+If you're running **AstroArch** on your Raspberry Pi 5 (the
+[devDucks/astroarch](https://github.com/devDucks/astroarch) ArchLinux
+ARM distro), everything you need on the Pi side is **already
+installed**: KStars 3.8.x with Ekos and DBus, INDI server, PHD2,
+Python 3.11+, `qdbus6`, `dbus-monitor`, systemd user services.
+Setup time: **~10 minutes**.
 
-**Quick start**:
+### 1️⃣ Install the bridge on the Raspberry Pi
 
 ```bash
-# 1. On the Raspberry Pi
-scp -r backend/ astronaut@RPI_IP:/tmp/
 ssh astronaut@RPI_IP
-cd /tmp/backend
+git clone https://github.com/Johannes1979I/astroarch-interface
+cd astroarch-interface/backend
 sudo bash deploy/install.sh --user astronaut
-# prints URL and token
-
-# 2. Download the APK from the GitHub Releases page and install it on the phone
-# https://github.com/Johannes1979I/astroarch-interface/releases/latest
-
-# 3. Open the app, tap "SCAN QR FROM DASHBOARD" and frame the QR shown on the AstroArch desktop
-#    (or enter host/port/token manually)
 ```
+
+The script:
+- copies the bridge to `/home/astronaut/astroarch-bridge/`
+- generates a **random token** saved in `~/.config/astroarch-bridge/token`
+- creates and enables the systemd user service
+  `astroarch-bridge.service` (auto-starts at boot)
+- prints the **Tailscale URL**, the **LAN URL**, and the **token** to
+  enter in the app
+
+### 2️⃣ Make sure Tailscale is running
+
+If Tailscale isn't installed yet:
+
+```bash
+sudo pacman -S tailscale
+sudo systemctl enable --now tailscaled
+sudo tailscale up
+```
+
+Then on your phone: install **Tailscale** from the Play Store and sign
+in with the same account (or join a shared tailnet). Verify the Pi
+shows up in the Tailscale phone app.
+
+### 3️⃣ Install the Android APK
+
+Download the latest APK from
+[**GitHub Releases**](https://github.com/Johannes1979I/astroarch-interface/releases/latest)
+and install it on the phone (Android 8.0+).
+
+### 4️⃣ Pair the app with the bridge
+
+Open the app → **SCAN QR FROM DASHBOARD** and frame the QR code shown
+by the desktop dashboard widget that the install script enables.
+Alternatively, **Enter manually** and fill:
+
+- **Host**: your Pi's Tailscale IP (e.g. `100.x.y.z`, shown by
+  `tailscale ip -4` on the Pi)
+- **Port**: `8765`
+- **Token**: the string printed by `install.sh`
+
+Tap **Connetti / Connect** and you're in.
+
+### What it inherits from your Ekos profile
+
+The app reads your existing Ekos settings — it does NOT overwrite
+them. In particular:
+
+- ✅ **FITS save folder** (Capture → Cartella) — read from KStars
+  `userdb.sqlite` and preserved in every job
+- ✅ **Placeholder format** (Capture → Formato) — same source
+- ✅ **Optical train** + camera/focuser/filter wheel mapping
+- ✅ **Target coordinates** when you select an object via SIMBAD or
+  KStars
+- ✅ **PHD2 server** at `127.0.0.1:4400`
+- ✅ **INDI server** at `127.0.0.1:7624`
+
+So if Ekos already works on your desktop with your hardware, the app
+works too — without any extra configuration.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| App shows "Bridge unreachable" | Check Tailscale on the phone is ON (key icon green). `ping 100.x.y.z` from `tailscale debug netcheck` on the Pi. |
+| `Invalid token` | Re-scan the QR or copy the token from `~/.config/astroarch-bridge/token` on the Pi. |
+| Ekos shows empty Cartella/Formato | You're on bridge ≤ v0.2.27. Update with `git pull && sudo systemctl restart astroarch-bridge.service` (the fix landed in v0.2.28). |
+| `qdbus6: command not found` | `sudo pacman -S qt6-tools` |
+| Bridge log | `journalctl --user -u astroarch-bridge -f` |
+
+### 🇮🇹 Versione italiana (per i miei amici)
+
+Se hai AstroArch sul tuo Raspberry Pi 5, tutto quello che serve sul Pi
+è **già installato** (KStars 3.8, Ekos, DBus, INDI, PHD2, Python,
+qdbus6, dbus-monitor). Tempo di setup: **~10 minuti**.
+
+**1)** SSH sul Pi e installa il bridge:
+```bash
+ssh astronaut@RPI_IP
+git clone https://github.com/Johannes1979I/astroarch-interface
+cd astroarch-interface/backend
+sudo bash deploy/install.sh --user astronaut
+```
+Lo script genera un token randomico, crea il servizio systemd e stampa
+URL Tailscale + URL LAN + token.
+
+**2)** Installa **Tailscale** sul Pi (`sudo pacman -S tailscale &&
+sudo tailscale up`) e sul telefono dal Play Store, con lo stesso
+account.
+
+**3)** Scarica l'APK da
+[**GitHub Releases**](https://github.com/Johannes1979I/astroarch-interface/releases/latest)
+e installala sul telefono (Android 8.0+).
+
+**4)** Apri l'app → **SCANSIONA QR DALLA DASHBOARD** sul desktop, o
+inserisci manualmente host/porta/token. Pronto.
+
+L'app legge automaticamente le **tue impostazioni Ekos** (cartella
+salvataggio, formato file, profilo, camera/focuser/filtri) — non
+sovrascrive niente. Se Ekos funziona sul tuo desktop, l'app funziona
+sul tuo telefono.
 
 ---
 
