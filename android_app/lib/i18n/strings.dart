@@ -431,6 +431,14 @@ class L10n {
     // ==== GUIDE =============================================================
     'PHD2: nessuna stella selezionata. Premi FIND STAR.':
         'PHD2: no star selected. Press FIND STAR.',
+    'TARGET EKOS': 'EKOS TARGET',
+    'Nessun target impostato': 'No target set',
+    'Il target è > 30° dalla posizione attuale: probabilmente stantio. '
+            '"Slew to target" porterebbe il telescopio lontano.':
+        'Target is > 30° from current position: likely stale. '
+        '"Slew to target" would move the telescope far away.',
+    'USA POSIZIONE MOUNT COME TARGET': 'USE MOUNT POSITION AS TARGET',
+    'Target = posizione mount (': 'Target = mount position (',
     'RMS Tot': 'Total RMS',
     'Avvia guida': 'Start guiding',
     'Ferma guida': 'Stop guiding',

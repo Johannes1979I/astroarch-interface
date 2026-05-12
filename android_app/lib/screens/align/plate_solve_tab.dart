@@ -100,6 +100,19 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
       if (!wasComplete && nowComplete) {
         final sol = f['solution'] as Map<String, dynamic>?;
         final tgt = f['target'] as Map<String, dynamic>?;
+        // Quando l'utente sceglie Sync, dopo un solve riuscito aggiorniamo
+        // ANCHE il target di Ekos alla posizione solvata. Così se in seguito
+        // tappa "Slew to target", il target non sarà stantio.
+        if (sol != null && _solverAction == 0 /* Sync */) {
+          final ra = (sol['ra_hours'] as num?)?.toDouble();
+          final dec = (sol['dec_deg'] as num?)?.toDouble();
+          if (ra != null && dec != null && s.api != null) {
+            try {
+              await s.api!.alignEkosSet(
+                  targetRaHours: ra, targetDecDeg: dec);
+            } catch (_) {}
+          }
+        }
         if (sol != null) {
           _history.insert(0, {
             'ts': DateTime.now(),
@@ -183,6 +196,12 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
         _bigActionButton(s, inProgress, mountSlewing),
         const SizedBox(height: 8),
         _solverActionRow(lockUI),
+        const SizedBox(height: 8),
+        // Target di Ekos: visualizzazione + warning se stantio.
+        // Senza questo l'utente non sa che "Slew to target" usa un target
+        // potenzialmente vecchio (capita: aprivamo un nuovo progetto e
+        // Slew slewava al target della sessione precedente).
+        _targetSelectorCard(s, lockUI),
         const SizedBox(height: 10),
         // Mostra la solution SOLO se l'ultimo run è effettivamente completato.
         // Ekos restituisce sempre l'ultima solution riuscita (anche stale dopo
@@ -448,6 +467,110 @@ class _PlateSolveTabState extends State<PlateSolveTab> {
     } catch (e) {
       if (mounted) showSnack(context, '${'Errore: '.tr(context)}$e', error: true);
     }
+  }
+
+  /// Card che mostra le coordinate TARGET attualmente impostate in Ekos
+  /// con warning se sono distanti più di 30° dalla posizione del mount
+  /// (= target probabilmente stantio da sessione precedente), e con un
+  /// pulsante per impostare target = posizione corrente della montatura.
+  Widget _targetSelectorCard(AppState s, bool lockUI) {
+    final tgt = _full?['target'] as Map<String, dynamic>?;
+    final mount = _full?['mount_coords'] as Map<String, dynamic>?;
+    final tgtRa = (tgt?['ra_hours'] as num?)?.toDouble();
+    final tgtDec = (tgt?['dec_deg'] as num?)?.toDouble();
+    final mRa = (mount?['ra_hours'] as num?)?.toDouble();
+    final mDec = (mount?['dec_deg'] as num?)?.toDouble();
+    final hasTarget = tgtRa != null && tgtDec != null
+        && !(tgtRa.abs() < 0.001 && tgtDec.abs() < 0.001);
+    // Distanza approssimata target↔mount in gradi (sferica spannometrica)
+    double? distDeg;
+    if (hasTarget && mRa != null && mDec != null) {
+      final dRa = (tgtRa - mRa) * 15.0 * math.cos(mDec * math.pi / 180.0);
+      final dDec = tgtDec - mDec;
+      distDeg = math.sqrt(dRa * dRa + dDec * dDec);
+    }
+    final stale = distDeg != null && distDeg > 30.0;
+
+    final bg = !hasTarget
+        ? T.muted(context).withValues(alpha: 0.10)
+        : stale
+            ? T.err(context).withValues(alpha: 0.10)
+            : T.ok(context).withValues(alpha: 0.05);
+    final border = !hasTarget
+        ? T.muted(context).withValues(alpha: 0.4)
+        : stale
+            ? T.err(context).withValues(alpha: 0.5)
+            : T.ok(context).withValues(alpha: 0.3);
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bg, borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(stale ? Icons.warning_amber
+              : (hasTarget ? Icons.flag : Icons.flag_outlined),
+              size: 14, color: stale ? T.err(context) : T.muted(context)),
+          const SizedBox(width: 6),
+          Text('TARGET EKOS'.tr(context), style: TextStyle(
+              color: T.muted(context), fontSize: 10,
+              letterSpacing: 1.4, fontWeight: FontWeight.w700)),
+          if (distDeg != null) ...[
+            const Spacer(),
+            Text('Δ ${distDeg.toStringAsFixed(1)}°',
+                style: TextStyle(color: stale ? T.err(context) : T.muted(context),
+                    fontSize: 11, fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700)),
+          ],
+        ]),
+        const SizedBox(height: 6),
+        if (hasTarget) Row(children: [
+          Expanded(child: _smallKv('AR', _hms(tgtRa))),
+          Expanded(child: _smallKv('DEC', _dms(tgtDec))),
+        ]) else Text('Nessun target impostato'.tr(context),
+            style: TextStyle(color: T.muted(context),
+                fontSize: 11, fontStyle: FontStyle.italic)),
+        if (stale) Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+              'Il target è > 30° dalla posizione attuale: probabilmente stantio. '
+              '"Slew to target" porterebbe il telescopio lontano.'.tr(context),
+              style: TextStyle(color: T.err(context), fontSize: 11)),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: (lockUI || mRa == null || mDec == null) ? null : () async {
+              try {
+                await s.api!.alignEkosSet(
+                    targetRaHours: mRa, targetDecDeg: mDec);
+                if (mounted) {
+                  showSnack(context,
+                      '${'Target = posizione mount ('.tr(context)}'
+                      '${_hms(mRa)} ${_dms(mDec)})');
+                  await _poll();
+                }
+              } catch (e) {
+                if (mounted) showSnack(context,
+                    '${'Errore: '.tr(context)}$e', error: true);
+              }
+            },
+            icon: const Icon(Icons.my_location, size: 16),
+            label: Text('USA POSIZIONE MOUNT COME TARGET'.tr(context),
+                style: const TextStyle(fontSize: 11.5,
+                    fontWeight: FontWeight.w700, letterSpacing: .3)),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              foregroundColor: T.accent(context),
+              side: BorderSide(color: T.accent(context).withValues(alpha: 0.5)),
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 
   Widget _solverActionRow(bool inProgress) {
