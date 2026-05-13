@@ -81,7 +81,7 @@ def page_layout(canvas, doc):
         canvas.drawString(2 * cm, h - 1.2 * cm, "ASTROARCH INTERFACE")
         canvas.setFillColor(MUTED)
         canvas.setFont("Helvetica", 8)
-        canvas.drawRightString(w - 2 * cm, h - 1.2 * cm, "v0.2.14")
+        canvas.drawRightString(w - 2 * cm, h - 1.2 * cm, "v0.2.30")
     canvas.restoreState()
 
 
@@ -315,7 +315,7 @@ story.append(H2("2.4 APK installation on Android"))
 story.append(P("On the phone:"))
 story.append(ListFlowable([
     ListItem(P("Transfer the <font face='Courier'>"
-               "AstroarchInterface-v0.2.14.apk</font> file to the phone "
+               "AstroarchInterface-v0.2.30.apk</font> file to the phone "
                "(USB / Drive / Tailscale Drop)")),
     ListItem(P("Open the file from the file manager. Android will ask you to "
                'enable "Install apps from unknown sources" for the file '
@@ -748,6 +748,17 @@ story.append(grid_table(
         ["0.2.11", "BLOB intercept zero-invasive (parallel INDI client)"],
         ["0.2.12", "Auto-stretch identical to KStars/Ekos (ZScale + asinh MTF)"],
         ["0.2.14", "Fix Ekos AlignSolverAction enum mapping (Sync/Slew/Nothing)"],
+        ["0.2.16", "IT/EN language selector in Settings, persistent"],
+        ["0.2.17", "Master Start/Stop Ekos toggle on Dashboard"],
+        ["0.2.18", "Pairing QR auto-generated with Tailscale IP"],
+        ["0.2.22", "Stop button always reachable while a Capture sequence is alive"],
+        ["0.2.23", "Removed rogue INDI exposure that conflicted with Ekos.captureAndSolve"],
+        ["0.2.24", "App-owned active target, re-pushed to Ekos before every solve"],
+        ["0.2.25", "PHD2-style guide chart (signed Y axis arcsec, per-frame RA/DEC)"],
+        ["0.2.26", "Ekos-native autofocus: live V-curve from newHFR DBus signal"],
+        ["0.2.28", "Capture folder + placeholder read from KStars userdb (non-invasive)"],
+        ["0.2.29", "Multi-bridge: save more Pi setups, switch with one tap"],
+        ["0.2.30", "Launch KStars/Ekos and PHD2 on the RPi from the Dashboard"],
     ],
     col_widths=[2.5 * cm, 13 * cm]))
 
@@ -782,7 +793,7 @@ doc = SimpleDocTemplate(
     title="Astroarch Interface - User Manual",
     author="Zarletti-Osservatorio Jupiter",
     subject="User manual and installation guide",
-    creator="Astroarch Interface v0.2.14",
+    creator="Astroarch Interface v0.2.30",
 )
 doc.build(story, onFirstPage=_on_first_page, onLaterPages=_on_later_pages)
 
