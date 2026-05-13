@@ -186,6 +186,12 @@ class L10n {
     'sul desktop del RPi': 'on the RPi desktop',
     'in esecuzione': 'running',
     'avvia': 'launch',
+    'tap per chiudere': 'tap to close',
+    'già in esecuzione': 'already running',
+    'avviato sul desktop del RPi': 'launched on the RPi desktop',
+    'chiuso sul desktop del RPi': 'closed on the RPi desktop',
+    'Disattiva prima il sistema (pulsante rosso) per chiudere ':
+        'Disable the system first (red button) to close ',
     'KStars già in esecuzione': 'KStars already running',
     'KStars avviato sul desktop del RPi': 'KStars launched on the RPi desktop',
     'PHD2 già in esecuzione': 'PHD2 already running',

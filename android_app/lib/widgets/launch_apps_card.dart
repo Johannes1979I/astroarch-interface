@@ -23,6 +23,9 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
   bool _phd2Running = false;
   bool _kstarsBusy = false;
   bool _phd2Busy = false;
+  // Stato del sistema master (active / inactive / pending / error / unknown).
+  // Quando 'inactive' i pulsanti running diventano "tap per chiudere".
+  String _ekosActive = 'unknown';
 
   @override
   void initState() {
@@ -37,32 +40,64 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
     super.dispose();
   }
 
+  bool get _systemActive => _ekosActive == 'active';
+
   Future<void> _refresh() async {
     final s = context.read<AppState>();
     if (s.api == null) return;
     try {
-      final r = await s.api!.guiAppsState();
+      // In parallelo: stato GUI processi + stato master Ekos. La seconda
+      // condizione decide se i pulsanti "in esecuzione" sono cliccabili
+      // (per killare) o no (sistema attivo = sessione viva, non chiudere).
+      final results = await Future.wait([
+        s.api!.guiAppsState(),
+        s.api!.ekosState().catchError((_) => <String, dynamic>{}),
+      ]);
       if (!mounted) return;
+      final apps = results[0];
+      final ekos = results[1];
       setState(() {
-        _kstarsRunning = r['kstars_running'] == true;
-        _phd2Running = r['phd2_running'] == true;
+        _kstarsRunning = apps['kstars_running'] == true;
+        _phd2Running = apps['phd2_running'] == true;
+        _ekosActive = (ekos['active'] as String?) ?? 'unknown';
       });
     } catch (_) {}
   }
 
-  Future<void> _launchKStars() async {
+  /// Logica unificata: tap su un pulsante può LANCIARE (se app off) o
+  /// CHIUDERE (se app running E sistema disattivato). Se app running e
+  /// sistema attivo, mostra warning e non fa nulla (non vogliamo
+  /// chiudere KStars mentre Ekos sta usando i driver).
+  Future<void> _onTap({
+    required bool running,
+    required Future<Map<String, dynamic>> Function() launchFn,
+    required Future<Map<String, dynamic>> Function() killFn,
+    required String appName,
+    required void Function(bool busy) setBusy,
+  }) async {
     final s = context.read<AppState>();
     if (s.api == null) return;
-    setState(() => _kstarsBusy = true);
+    if (running && _systemActive) {
+      showSnack(context,
+          '${'Disattiva prima il sistema (pulsante rosso) per chiudere '.tr(context)}$appName',
+          error: true);
+      return;
+    }
+    setBusy(true);
     try {
-      final r = await s.api!.launchKStars();
-      if (!mounted) return;
-      if (r['already_running'] == true) {
-        showSnack(context, 'KStars già in esecuzione'.tr(context));
+      if (running) {
+        await killFn();
+        if (!mounted) return;
+        showSnack(context, '${appName} ${'chiuso sul desktop del RPi'.tr(context)}');
       } else {
-        showSnack(context, 'KStars avviato sul desktop del RPi'.tr(context));
+        final r = await launchFn();
+        if (!mounted) return;
+        if (r['already_running'] == true) {
+          showSnack(context, '${appName} ${'già in esecuzione'.tr(context)}');
+        } else {
+          showSnack(context, '${appName} ${'avviato sul desktop del RPi'.tr(context)}');
+        }
       }
-      // Rilegge dopo 1.5s per vedere il processo
       await Future.delayed(const Duration(milliseconds: 1500));
       await _refresh();
     } on ApiException catch (e) {
@@ -72,33 +107,32 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
       if (mounted) showSnack(context,
           '${'Errore: '.tr(context)}$e', error: true);
     } finally {
-      if (mounted) setState(() => _kstarsBusy = false);
+      if (mounted) setBusy(false);
     }
   }
 
-  Future<void> _launchPhd2() async {
+  Future<void> _onTapKStars() async {
     final s = context.read<AppState>();
     if (s.api == null) return;
-    setState(() => _phd2Busy = true);
-    try {
-      final r = await s.api!.launchPhd2();
-      if (!mounted) return;
-      if (r['already_running'] == true) {
-        showSnack(context, 'PHD2 già in esecuzione'.tr(context));
-      } else {
-        showSnack(context, 'PHD2 avviato sul desktop del RPi'.tr(context));
-      }
-      await Future.delayed(const Duration(milliseconds: 1500));
-      await _refresh();
-    } on ApiException catch (e) {
-      if (mounted) showSnack(context,
-          '${'Errore: '.tr(context)}${e.body}', error: true);
-    } catch (e) {
-      if (mounted) showSnack(context,
-          '${'Errore: '.tr(context)}$e', error: true);
-    } finally {
-      if (mounted) setState(() => _phd2Busy = false);
-    }
+    await _onTap(
+      running: _kstarsRunning,
+      launchFn: () => s.api!.launchKStars(),
+      killFn: () => s.api!.killKStars(),
+      appName: 'KStars',
+      setBusy: (v) => setState(() => _kstarsBusy = v),
+    );
+  }
+
+  Future<void> _onTapPhd2() async {
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    await _onTap(
+      running: _phd2Running,
+      launchFn: () => s.api!.launchPhd2(),
+      killFn: () => s.api!.killPhd2(),
+      appName: 'PHD2',
+      setBusy: (v) => setState(() => _phd2Busy = v),
+    );
   }
 
   @override
@@ -130,7 +164,7 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
             icon: Icons.public,
             running: _kstarsRunning,
             busy: _kstarsBusy,
-            onTap: _launchKStars,
+            onTap: _onTapKStars,
           )),
           const SizedBox(width: 8),
           Expanded(child: _appButton(
@@ -138,7 +172,7 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
             icon: Icons.gps_fixed,
             running: _phd2Running,
             busy: _phd2Busy,
-            onTap: _launchPhd2,
+            onTap: _onTapPhd2,
           )),
         ]),
       ]),
@@ -150,6 +184,11 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
     required bool running, required bool busy,
     required VoidCallback onTap,
   }) {
+    // 3 stati visivi:
+    //  - running + sistema attivo  → VERDE bloccato (tap mostra warning)
+    //  - running + sistema giù     → VERDE chiudibile (subtitle "tap per chiudere")
+    //  - off                        → ARANCIONE (tap per avviare)
+    final canKill = running && !_systemActive;
     final Color bgColor = running
         ? T.ok(context).withValues(alpha: 0.15)
         : T.accent(context).withValues(alpha: 0.10);
@@ -157,6 +196,14 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
         ? T.ok(context).withValues(alpha: 0.5)
         : T.accent(context).withValues(alpha: 0.4);
     final Color fgColor = running ? T.ok(context) : T.accent(context);
+    final String subtitle = running
+        ? (canKill
+            ? 'tap per chiudere'.tr(context)
+            : 'in esecuzione'.tr(context))
+        : 'avvia'.tr(context);
+    final IconData buttonIcon = running
+        ? (canKill ? Icons.power_settings_new : Icons.check_circle)
+        : icon;
 
     return InkWell(
       onTap: busy ? null : onTap,
@@ -173,8 +220,7 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
             SizedBox(width: 16, height: 16, child:
                 CircularProgressIndicator(strokeWidth: 2, color: fgColor))
           else
-            Icon(running ? Icons.check_circle : icon,
-                color: fgColor, size: 18),
+            Icon(buttonIcon, color: fgColor, size: 18),
           const SizedBox(width: 8),
           Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,9 +230,7 @@ class _LaunchAppsCardState extends State<LaunchAppsCard> {
                 style: TextStyle(color: fgColor, fontSize: 12,
                     fontWeight: FontWeight.w700, letterSpacing: .3),
                 overflow: TextOverflow.ellipsis),
-            Text(running
-                    ? 'in esecuzione'.tr(context)
-                    : 'avvia'.tr(context),
+            Text(subtitle,
                 style: TextStyle(color: fgColor.withValues(alpha: 0.8),
                     fontSize: 10)),
           ])),

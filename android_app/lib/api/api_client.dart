@@ -158,6 +158,8 @@ class ApiClient {
   Future<Map<String, dynamic>> guiAppsState() => get('/api/system/gui_apps_state');
   Future<Map<String, dynamic>> launchKStars() => post('/api/system/launch_kstars');
   Future<Map<String, dynamic>> launchPhd2() => post('/api/system/launch_phd2');
+  Future<Map<String, dynamic>> killKStars() => post('/api/system/kill_kstars');
+  Future<Map<String, dynamic>> killPhd2() => post('/api/system/kill_phd2');
 
   /// QR di accoppiamento: ritorna {host, port, token, payload, png_base64}
   /// generato dal bridge con l'IP Tailscale (NON l'IP LAN).
