@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../api/ws_client.dart';
 import '../i18n/strings.dart';
+import 'bridge_connection.dart';
 import 'capture_job.dart';
 
 /// Stato globale dell'app.
@@ -11,12 +12,49 @@ import 'capture_job.dart';
 /// - Modello "specchio" del bridge: properties INDI, PHD2 live, last frame, ecc.
 /// - Notifica i listener su ogni cambiamento (Provider/ChangeNotifier)
 class AppState extends ChangeNotifier {
-  // --- Connection config ---
-  String host = '';
-  int port = 8765;
-  String token = '';
+  // --- Bridges (multi-RPi) ---
+  // L'utente può salvare più bridge (un RPi per ognuno) e switchare con un
+  // tap. La lista è persistita come JSON in `bridges_v1`. Una sola è ATTIVA
+  // per volta (quella effettivamente connessa). I getter `host/port/token`
+  // sotto sono facades verso la bridge attiva, per backward-compat col
+  // codice esistente che li legge come campi singoli.
+  List<BridgeConnection> bridges = [];
+  String? activeBridgeId;
+
+  /// Bridge attualmente selezionata (mai null se ce ne sono).
+  BridgeConnection? get activeBridge {
+    if (bridges.isEmpty) return null;
+    if (activeBridgeId != null) {
+      for (final b in bridges) {
+        if (b.id == activeBridgeId) return b;
+      }
+    }
+    return bridges.first;
+  }
+
+  // === Facades verso la bridge attiva ===
+  String get host => activeBridge?.host ?? '';
+  set host(String v) {
+    final b = activeBridge;
+    if (b != null) { b.host = v; savePrefs(); }
+  }
+  int get port => activeBridge?.port ?? 8765;
+  set port(int v) {
+    final b = activeBridge;
+    if (b != null) { b.port = v; savePrefs(); }
+  }
+  String get token => activeBridge?.token ?? '';
+  set token(String v) {
+    final b = activeBridge;
+    if (b != null) { b.token = v; savePrefs(); }
+  }
+  bool get useHttps => activeBridge?.useHttps ?? false;
+  set useHttps(bool v) {
+    final b = activeBridge;
+    if (b != null) { b.useHttps = v; savePrefs(); }
+  }
+
   bool nightMode = false;
-  bool useHttps = false;
   // Lingua UI — IT è default ("Zarletti-Osservatorio Jupiter" è italiano).
   // Cambiabile da Settings; persistente via SharedPreferences (chiave 'locale').
   AppLocale locale = AppLocale.it;
@@ -122,11 +160,29 @@ class AppState extends ChangeNotifier {
   // --- Persistence ---
   Future<void> loadPrefs() async {
     final p = await SharedPreferences.getInstance();
-    host = p.getString('host') ?? '';
-    port = p.getInt('port') ?? 8765;
-    token = p.getString('token') ?? '';
+    // Multi-bridge: carica lista. Se vuota e ci sono i vecchi campi
+    // host/port/token in prefs, esegue migrazione automatica creando
+    // una bridge singola "Bridge principale".
+    bridges = BridgeConnection.decodeList(p.getString('bridges_v1'));
+    activeBridgeId = p.getString('activeBridgeId');
+    if (bridges.isEmpty) {
+      final legacyHost = p.getString('host') ?? '';
+      final legacyToken = p.getString('token') ?? '';
+      if (legacyHost.isNotEmpty && legacyToken.isNotEmpty) {
+        final migrated = BridgeConnection(
+          id: BridgeConnection.generateId(),
+          name: 'Bridge principale',
+          host: legacyHost,
+          port: p.getInt('port') ?? 8765,
+          token: legacyToken,
+          useHttps: p.getBool('https') ?? false,
+        );
+        bridges = [migrated];
+        activeBridgeId = migrated.id;
+        await _saveBridgesList(p);
+      }
+    }
     nightMode = p.getBool('night') ?? false;
-    useHttps = p.getBool('https') ?? false;
     final loc = p.getString('locale');
     locale = (loc == 'en') ? AppLocale.en : AppLocale.it;
     selectedCamera = p.getString('selectedCamera');
@@ -139,13 +195,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _saveBridgesList(SharedPreferences p) async {
+    await p.setString('bridges_v1', BridgeConnection.encodeList(bridges));
+    if (activeBridgeId != null) {
+      await p.setString('activeBridgeId', activeBridgeId!);
+    } else {
+      await p.remove('activeBridgeId');
+    }
+  }
+
   Future<void> savePrefs() async {
     final p = await SharedPreferences.getInstance();
-    await p.setString('host', host);
-    await p.setInt('port', port);
-    await p.setString('token', token);
+    await _saveBridgesList(p);
     await p.setBool('night', nightMode);
-    await p.setBool('https', useHttps);
     await p.setString('locale', locale == AppLocale.en ? 'en' : 'it');
     if (selectedCamera != null) await p.setString('selectedCamera', selectedCamera!); else await p.remove('selectedCamera');
     if (selectedMount != null) await p.setString('selectedMount', selectedMount!); else await p.remove('selectedMount');
@@ -154,6 +216,96 @@ class AppState extends ChangeNotifier {
     if (activeTargetName != null) await p.setString('activeTargetName', activeTargetName!); else await p.remove('activeTargetName');
     if (activeTargetRaHours != null) await p.setDouble('activeTargetRaHours', activeTargetRaHours!); else await p.remove('activeTargetRaHours');
     if (activeTargetDecDeg != null) await p.setDouble('activeTargetDecDeg', activeTargetDecDeg!); else await p.remove('activeTargetDecDeg');
+  }
+
+  // === Multi-bridge management ===
+
+  /// Aggiunge una nuova bridge alla lista. Non la attiva — chiamare
+  /// `switchTo()` per attivarla.
+  Future<BridgeConnection> addBridge({
+    required String name, required String host, required int port,
+    required String token, bool useHttps = false,
+  }) async {
+    final b = BridgeConnection(
+      id: BridgeConnection.generateId(),
+      name: name, host: host, port: port, token: token, useHttps: useHttps,
+    );
+    bridges.add(b);
+    // Se è la prima, attivala
+    activeBridgeId ??= b.id;
+    await savePrefs();
+    notifyListeners();
+    return b;
+  }
+
+  Future<void> renameBridge(String id, String newName) async {
+    for (final b in bridges) {
+      if (b.id == id) {
+        b.name = newName;
+        await savePrefs();
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  Future<void> removeBridge(String id) async {
+    // Se rimuovo l'attiva, disconnetto prima
+    if (id == activeBridgeId) {
+      await disconnect();
+      activeBridgeId = null;
+    }
+    bridges.removeWhere((b) => b.id == id);
+    if (activeBridgeId == null && bridges.isNotEmpty) {
+      activeBridgeId = bridges.first.id;
+    }
+    await savePrefs();
+    notifyListeners();
+  }
+
+  /// Switch a una bridge esistente (per id): disconnette quella attuale,
+  /// pulisce lo stato locale (è un telescopio diverso!), poi connette
+  /// alla nuova. Ritorna true se la connessione è riuscita.
+  Future<bool> switchTo(String id) async {
+    final target = bridges.firstWhere((b) => b.id == id,
+        orElse: () => BridgeConnection(
+            id: '', name: '', host: '', port: 0, token: ''));
+    if (target.id.isEmpty) return false;
+    await disconnect();
+    _resetBridgeLocalState();
+    activeBridgeId = id;
+    target.lastUsedAt = DateTime.now();
+    await savePrefs();
+    notifyListeners();
+    return await connect();
+  }
+
+  /// Pulisce lo stato locale legato alla bridge (device, target, frame,
+  /// phd2 live, ...). Chiamato al cambio di bridge: il setup hardware
+  /// dell'altro RPi è diverso, niente di quanto c'era prima è rilevante.
+  void _resetBridgeLocalState() {
+    properties.clear();
+    devices.clear();
+    indiConn = 'disconnected';
+    phd2Conn = 'disconnected';
+    phd2Live = {};
+    phd2History.clear();
+    lastFrameMeta = {};
+    lastFrameJpeg = null;
+    messages.clear();
+    wsEventsReceived = 0;
+    lastWsEventType = null;
+    primaryCameraAuto = null;
+    guideCameraAuto = null;
+    cameraRolesMethod = null;
+    selectedCamera = null;
+    selectedMount = null;
+    selectedFocuser = null;
+    selectedFilterWheel = null;
+    // Target attivo è specifico per telescopio
+    activeTargetName = null;
+    activeTargetRaHours = null;
+    activeTargetDecDeg = null;
   }
 
   /// Imposta il target attivo (nome + RA/Dec) localmente e lo spinge a Ekos

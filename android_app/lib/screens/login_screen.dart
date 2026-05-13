@@ -57,10 +57,27 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _connect() async {
     setState(() { _busy = true; _err = null; });
     final s = context.read<AppState>();
-    s.host = _host.text.trim();
-    s.port = int.tryParse(_port.text.trim()) ?? 8765;
-    s.token = _token.text.trim();
-    await s.savePrefs();
+    final host = _host.text.trim();
+    final port = int.tryParse(_port.text.trim()) ?? 8765;
+    final token = _token.text.trim();
+    if (host.isEmpty || token.isEmpty) {
+      setState(() {
+        _busy = false;
+        _err = 'Host e token sono obbligatori'.tr(context);
+      });
+      return;
+    }
+    // Se c'è già una bridge attiva, aggiorna i suoi dati. Se non c'è
+    // ancora alcuna bridge, ne crea una nuova nella lista.
+    if (s.activeBridge == null) {
+      await s.addBridge(name: host, host: host, port: port,
+                        token: token, useHttps: false);
+    } else {
+      s.host = host;
+      s.port = port;
+      s.token = token;
+      await s.savePrefs();
+    }
     final ok = await s.connect();
     if (!mounted) return;
     setState(() {

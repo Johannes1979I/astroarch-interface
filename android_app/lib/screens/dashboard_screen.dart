@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ekos_master_toggle.dart';
+import 'connections_screen.dart';
 import 'live_view_screen.dart';
 import 'shell_screen.dart';
 
@@ -20,7 +21,36 @@ class DashboardScreen extends StatelessWidget {
         leading: IconButton(
             icon: const Icon(Icons.menu),
             onPressed: openShellDrawer),
-        title: Row(children: [const LiveDot(), const SizedBox(width: 10), Text('Dashboard'.tr(context))]),
+        title: InkWell(
+          // Tap sul titolo = quick switch tra bridge salvate.
+          // Long-press = apre la lista completa.
+          onTap: state.bridges.length > 1 ? () => _showBridgeSwitcher(context, state) : null,
+          onLongPress: () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (_) => const ConnectionsScreen()));
+          },
+          child: Row(children: [
+            const LiveDot(),
+            const SizedBox(width: 10),
+            Flexible(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Dashboard'.tr(context),
+                    overflow: TextOverflow.ellipsis),
+                if (state.activeBridge != null) Text(
+                  state.bridges.length > 1
+                      ? '${state.activeBridge!.name} ▾'  // hint cliccabile
+                      : state.activeBridge!.name,
+                  style: TextStyle(color: T.muted(context), fontSize: 11,
+                      fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            )),
+          ]),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, size: 20),
@@ -109,6 +139,93 @@ class DashboardScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Bottom-sheet di quick-switch tra bridge salvate. Apre toccando il
+  /// nome della bridge nell'AppBar (se sono >= 2 salvate).
+  void _showBridgeSwitcher(BuildContext context, AppState s) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: T.panel(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(child: Column(
+          mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 6),
+        Container(
+          width: 36, height: 4,
+          decoration: BoxDecoration(
+            color: T.muted(context).withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            Icon(Icons.cloud_outlined, size: 16, color: T.muted(context)),
+            const SizedBox(width: 8),
+            Text('Bridge salvate'.tr(context).toUpperCase(),
+                style: TextStyle(color: T.muted(context),
+                    fontSize: 10, letterSpacing: 1.4,
+                    fontWeight: FontWeight.w700)),
+            const Spacer(),
+            TextButton.icon(
+              icon: const Icon(Icons.settings, size: 16),
+              label: Text('Gestisci'.tr(context),
+                  style: const TextStyle(fontSize: 11)),
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const ConnectionsScreen()));
+              },
+            ),
+          ]),
+        ),
+        const Divider(height: 1),
+        for (final b in s.bridges) ListTile(
+          dense: true,
+          leading: Icon(
+            s.activeBridgeId == b.id
+                ? (s.api != null ? Icons.cloud_done : Icons.cloud_outlined)
+                : Icons.cloud,
+            color: s.activeBridgeId == b.id
+                ? (s.api != null ? T.ok(context) : T.accent(context))
+                : T.muted(context),
+            size: 22,
+          ),
+          title: Text(b.name,
+              style: TextStyle(
+                  fontWeight: s.activeBridgeId == b.id
+                      ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 14)),
+          subtitle: Text('${b.host}:${b.port}',
+              style: TextStyle(color: T.muted(context),
+                  fontSize: 11, fontFamily: 'monospace')),
+          trailing: s.activeBridgeId == b.id
+              ? Icon(Icons.check_circle, color: T.ok(context), size: 18)
+              : null,
+          onTap: s.activeBridgeId == b.id ? null : () async {
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('${'Switch a '.tr(context)}${b.name}…'),
+              duration: const Duration(seconds: 2),
+            ));
+            final ok = await s.switchTo(b.id);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(ok
+                    ? '${'Connesso a '.tr(context)}${b.name}'
+                    : '${'Switch fallito: '.tr(context)}${s.lastConnectError ?? "—"}'),
+                backgroundColor: ok ? null : T.err(context),
+              ));
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+      ])),
     );
   }
 

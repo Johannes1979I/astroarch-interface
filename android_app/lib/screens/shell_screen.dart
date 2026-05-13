@@ -15,6 +15,7 @@ import 'files_screen.dart';
 import 'logs_screen.dart';
 import 'live_view_screen.dart';
 import 'activity_log_screen.dart';
+import 'connections_screen.dart';
 import 'setup_screen.dart';
 import 'settings_screen.dart';
 import 'analyze_screen.dart';
@@ -137,6 +138,10 @@ class _AppDrawer extends StatelessWidget {
             }),
             const SizedBox(height: 8),
             _section(context, 'Sistema'.tr(context)),
+            _navTile(context, Icons.cloud_outlined, '${'Bridge salvate'.tr(context)} (${state.bridges.length})', () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ConnectionsScreen()));
+            }),
             _navTile(context, Icons.settings_input_component, 'INDI Panel'.tr(context), () {
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const IndiPanelScreen()));
