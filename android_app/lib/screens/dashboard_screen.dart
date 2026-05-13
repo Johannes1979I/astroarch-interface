@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ekos_master_toggle.dart';
+import '../widgets/launch_apps_card.dart';
 import 'connections_screen.dart';
 import 'live_view_screen.dart';
 import 'shell_screen.dart';
@@ -96,6 +97,10 @@ class DashboardScreen extends StatelessWidget {
             // Pulsante master Attiva/Disattiva — clone del quadratino
             // Start/Stop Ekos del pannello Setup. Verde=tutto su, rosso=tutto giù.
             const EkosMasterToggle(),
+            const SizedBox(height: 8),
+            // Lancio GUI app sul desktop del RPi (KStars/Ekos, PHD2).
+            // Le finestre appaiono sul monitor fisico del RPi.
+            const LaunchAppsCard(),
             const SizedBox(height: 12),
             _connectionBanner(context, state),
             const SizedBox(height: 10),
