@@ -620,6 +620,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
         jobs: s.captureJobs.map((j) => j.toJson()).toList(),
         target: target,
         autoStart: true,
+        // v0.2.36: passa override dither config (se l'utente ha toccato il
+        // pannello Guide → Dither config). Se nulli, il bridge usa i
+        // valori di Ekos (kstarsrc) come default.
+        ditherAmount: s.ditherAmountPx,
+        ditherSettleTime: s.ditherSettleSec,
+        ditherSettlePixels: s.ditherSettlePixels,
+        ditherFrequency: s.ditherFrequency,
+        ditherRaOnly: s.ditherRaOnly,
       );
       if (!mounted) return;
       if (r['loaded'] == true && r['started'] == true) {

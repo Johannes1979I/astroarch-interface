@@ -259,7 +259,72 @@ _auto_dither_state = {
     "settle_pixels": 1.5,
     "settle_time": 10.0,
     "settle_timeout": 60.0,
+    # v0.3.6: dither solo ogni N frame (default 1 = ad ogni scatto)
+    "frequency": 1,
+    "ra_only": False,
 }
+
+
+def _read_ekos_dither_settings() -> dict:
+    """Legge le impostazioni Dither che l'utente ha configurato in Ekos
+    (~/.config/kstarsrc sezione [Guide]). NON le modifica.
+    Mappa keys Ekos → keys del nostro state:
+      DitherPixels → amount      (default 3.0 — quanto sposta in pixel)
+      DitherSettle → settle_time (default 10.0 — secondi MINIMI di settling)
+
+    NB: NON usiamo `DitherThreshold` come settle_pixels: in Ekos quella chiave
+    è la soglia di errore guida sopra la quale Ekos halt/alerta — semantica
+    diversa dal `settle.pixels` di PHD2 (RMS max tollerata in settling).
+    Per `settle_pixels` lasciamo il default 1.5 (ragionevole per la maggior
+    parte dei setup); l'app può ancora forzare un override via job."""
+    cfg = Path.home() / ".config/kstarsrc"
+    out = {}
+    if not cfg.exists():
+        return out
+    try:
+        in_guide = False
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("[") and s.endswith("]"):
+                in_guide = (s == "[Guide]")
+                continue
+            if not in_guide or "=" not in s:
+                continue
+            k, _, v = s.partition("=")
+            k = k.strip(); v = v.strip()
+            if k == "DitherPixels":
+                try: out["amount"] = float(v)
+                except ValueError: pass
+            elif k == "DitherSettle":
+                try: out["settle_time"] = float(v)
+                except ValueError: pass
+    except Exception as e:
+        _logger.warning("cannot read Ekos dither settings: %s", e)
+    return out
+
+
+def _read_active_train_name() -> str:
+    """Risolve il NOME del train attivo dalla userdb di KStars usando
+    CaptureTrainID di kstarsrc. Ritorna stringa vuota se non lo trova.
+
+    Esempio: CaptureTrainID=1 → 'Principale'.
+    Serve per chiamare Ekos.Capture.start(train_name) — passare ""
+    fa fallire il restart su molte versioni Ekos."""
+    train_id = _read_active_train_id()
+    if train_id is None:
+        return ""
+    try:
+        conn = sqlite3.connect(f"file:{KSTARS_USERDB}?mode=ro", uri=True, timeout=2.0)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM opticaltrains WHERE id = ?", (train_id,))
+            row = cur.fetchone()
+            return row[0] if row else ""
+        finally:
+            conn.close()
+    except Exception as e:
+        _logger.warning("cannot read train name: %s", e)
+        return ""
 
 
 async def _auto_dither_worker() -> None:
@@ -287,8 +352,18 @@ async def _auto_dither_worker() -> None:
                         break
                     if b"captureComplete" in line:
                         _auto_dither_state["frames_seen"] += 1
+                        frequency = max(1, int(_auto_dither_state.get("frequency") or 1))
+                        # v0.3.6: dither solo ogni N frame.
+                        # Es. frequency=3 → dither dopo i frame 3, 6, 9, ...
+                        if _auto_dither_state["frames_seen"] % frequency != 0:
+                            _logger.info("auto-dither: captureComplete #%d, "
+                                         "skip (frequency=%d, dither ogni %d)",
+                                         _auto_dither_state["frames_seen"],
+                                         frequency, frequency)
+                            continue
                         _logger.info("auto-dither: captureComplete intercepted "
-                                     "(frame #%d)", _auto_dither_state["frames_seen"])
+                                     "(frame #%d, frequency=%d) → DITHER",
+                                     _auto_dither_state["frames_seen"], frequency)
                         # Spawn cycle as task so we don't block the readline loop
                         asyncio.create_task(_auto_dither_cycle())
             finally:
@@ -305,46 +380,84 @@ async def _auto_dither_worker() -> None:
 
 
 async def _auto_dither_cycle() -> None:
-    """Esegue un ciclo: pause Ekos → dither PHD2 → restart Ekos."""
+    """Esegue un ciclo: pause Ekos → dither PHD2 → WAIT SettleDone → restart Ekos.
+
+    v0.3.5: importante — la chiamata a `phd2.dither(...)` ritorna SUBITO
+    con l'ACK JSON-RPC (~40ms). PHD2 fa il vero dither (move + settle) in
+    asincrono, emettendo eventi `Settling` (start) e `SettleDone` (end).
+    Prima riprendevamo Ekos appena tornata la ACK → Ekos partiva con il
+    prossimo scatto MENTRE PHD2 era ancora in settling → trails.
+    Adesso aspettiamo che `phd2.live.settling` torni False (con timeout).
+    """
     bridge = _auto_dither_bridge
     if bridge is None:
         _logger.warning("auto-dither: bridge non disponibile")
         return
     train = _auto_dither_state["train"]
     try:
-        # 1) Pausa Ekos. È Q_NOREPLY → non aspetta risposta.
-        _logger.info("auto-dither: pausing Ekos.Capture")
+        # 1) Pausa Ekos.
+        _logger.info("auto-dither: pausing Ekos.Capture (train=%r)", train)
         await _dbus_call(EKOS_DBUS_SERVICE, EKOS_CAPTURE_PATH,
                           "org.kde.kstars.Ekos.Capture.pause", timeout=5.0)
-        # piccola pausa per dare a Ekos tempo di processare il pause prima
-        # che PHD2 cominci il dither (evita race condition se Ekos stava
-        # per iniziare la prossima esposizione)
         await asyncio.sleep(0.5)
 
-        # 2) Dither PHD2 con i parametri configurati
-        _logger.info("auto-dither: dithering PHD2 (amount=%.1f, settle=%.1f/%.0fs)",
-                     _auto_dither_state["amount"],
-                     _auto_dither_state["settle_pixels"],
-                     _auto_dither_state["settle_time"])
+        # 2) Dither PHD2 (la chiamata ritorna subito con l'ACK)
+        amount = _auto_dither_state["amount"]
+        settle_pixels = _auto_dither_state["settle_pixels"]
+        settle_time = _auto_dither_state["settle_time"]
+        settle_timeout = _auto_dither_state["settle_timeout"]
+        ra_only = bool(_auto_dither_state.get("ra_only", False))
+        _logger.info("auto-dither: dither RPC sent (amount=%.1fpx, settle_pixels=%.1fpx, "
+                     "settle_time=%.0fs, ra_only=%s)",
+                     amount, settle_pixels, settle_time, ra_only)
         try:
             await bridge.phd2.dither(
-                amount=_auto_dither_state["amount"],
-                ra_only=False,
-                settle_pixels=_auto_dither_state["settle_pixels"],
-                settle_time=_auto_dither_state["settle_time"],
-                settle_timeout=_auto_dither_state["settle_timeout"],
+                amount=amount,
+                ra_only=ra_only,
+                settle_pixels=settle_pixels,
+                settle_time=settle_time,
+                settle_timeout=settle_timeout,
             )
-            _auto_dither_state["last_dither_ts"] = time.time()
-            _auto_dither_state["last_error"] = None
-            _logger.info("auto-dither: PHD2 settled, resuming Ekos")
         except Exception as e:
-            # Se PHD2 fallisce (es. non connesso), riprendiamo comunque Ekos
-            # — non vogliamo lasciare la sequenza in pausa permanente.
-            _auto_dither_state["last_error"] = f"PHD2 dither failed: {e}"
-            _logger.warning("auto-dither: PHD2 dither failed (%s), "
-                            "resuming Ekos comunque", e)
+            _auto_dither_state["last_error"] = f"PHD2 dither ACK failed: {e}"
+            _logger.warning("auto-dither: PHD2 dither ACK failed (%s), riprendo Ekos", e)
+            # fallthrough to resume Ekos comunque
+        else:
+            # 2b) Aspettiamo l'evento SettleDone (settling torna False).
+            # PHD2 prima setta settling=True (Settling event), poi False (SettleDone).
+            # Aspettiamo che diventi True ENTRO 5s (PHD2 prende un attimo a partire)
+            # poi che torni False ENTRO settle_timeout (max attesa configurata).
+            try:
+                # wait for Settling=True
+                t0 = time.monotonic()
+                while time.monotonic() - t0 < 5.0:
+                    if bridge.phd2.live.get("settling") is True:
+                        break
+                    await asyncio.sleep(0.2)
+                # wait for Settling=False (SettleDone)
+                t1 = time.monotonic()
+                max_wait = float(settle_timeout) + 5.0
+                while time.monotonic() - t1 < max_wait:
+                    if bridge.phd2.live.get("settling") is not True:
+                        break
+                    await asyncio.sleep(0.3)
+                else:
+                    _logger.warning("auto-dither: settle timeout (%.0fs), riprendo comunque", max_wait)
+                elapsed = time.monotonic() - t0
+                _logger.info("auto-dither: PHD2 settled after %.1fs, resuming Ekos", elapsed)
+                _auto_dither_state["last_dither_ts"] = time.time()
+                _auto_dither_state["last_error"] = None
+            except Exception as e:
+                _auto_dither_state["last_error"] = f"settle wait failed: {e}"
+                _logger.warning("auto-dither: settle wait failed (%s), riprendo", e)
 
-        # 3) Riavvia Ekos.Capture passando il train (uguale al loadSequenceQueue)
+        # 3) Riavvia Ekos.Capture passando il NOME del train (es. "Principale").
+        # v0.3.5: prima passavamo train="" → start() falliva silenziosamente
+        # e il job restava in pausa per sempre.
+        if not train:
+            train = _read_active_train_name()
+            _auto_dither_state["train"] = train
+            _logger.info("auto-dither: resolved train name → %r", train)
         await _dbus_call(EKOS_DBUS_SERVICE, EKOS_CAPTURE_PATH,
                           "org.kde.kstars.Ekos.Capture.start", train, timeout=5.0)
     except Exception as e:
@@ -353,7 +466,7 @@ async def _auto_dither_cycle() -> None:
         # Tentativo last-resort: prova a riavviare Ekos
         try:
             await _dbus_call(EKOS_DBUS_SERVICE, EKOS_CAPTURE_PATH,
-                              "org.kde.kstars.Ekos.Capture.start", train, timeout=5.0)
+                              "org.kde.kstars.Ekos.Capture.start", train or "", timeout=5.0)
         except Exception:
             pass
 
@@ -524,13 +637,35 @@ async def ekos_run(payload: dict = Body(...), bridge: Bridge = Depends(get_bridg
         )
         started = rc3 == 0
         start_msg = out3
-    # v0.3.4: auto-dither bridge-native.
+    # v0.3.4–0.3.6: auto-dither bridge-native.
     # Se almeno un job ha `ditherEachFrame=true`, accendiamo il watcher che
     # via dbus-monitor intercetta `captureComplete` e chiama PHD2.dither().
-    # Se nessun job vuole dither, fermiamo eventuali watcher precedenti.
     any_dither = any(bool(j.get("ditherEachFrame")) for j in jobs)
-    # Persistiamo le preferenze di settle dal primo job che ce le ha
-    # (oppure default ragionevoli)
+    # Priorità dei parametri dither:
+    #   1) override TOP-LEVEL del payload (app v0.2.36+: pannello UI dither)
+    #   2) override per-job (CaptureJob.ditherAmount, raro)
+    #   3) Ekos kstarsrc [Guide] (DitherPixels/DitherSettle)
+    #   4) default ragionevoli
+    ekos_dither = _read_ekos_dither_settings()
+    if ekos_dither.get("amount") is not None:
+        _auto_dither_state["amount"] = float(ekos_dither["amount"])
+    if ekos_dither.get("settle_time") is not None:
+        _auto_dither_state["settle_time"] = float(ekos_dither["settle_time"])
+    # v0.3.6 default frequency: legge GuideDitherPerJobFrequency da [Capture] kstarsrc
+    cfg_kstars = Path.home() / ".config/kstarsrc"
+    if cfg_kstars.exists():
+        try:
+            in_cap = False
+            for line in cfg_kstars.read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if s.startswith("[") and s.endswith("]"):
+                    in_cap = (s == "[Capture]"); continue
+                if in_cap and s.startswith("GuideDitherPerJobFrequency="):
+                    try: _auto_dither_state["frequency"] = max(1, int(s.split("=",1)[1]))
+                    except ValueError: pass
+        except Exception:
+            pass
+    # 2) Override per-job (raro)
     for j in jobs:
         if j.get("ditherAmount") is not None:
             _auto_dither_state["amount"] = float(j["ditherAmount"])
@@ -539,8 +674,30 @@ async def ekos_run(payload: dict = Body(...), bridge: Bridge = Depends(get_bridg
         if j.get("ditherSettleTime") is not None:
             _auto_dither_state["settle_time"] = float(j["ditherSettleTime"])
         break
+    # 1) Override TOP-LEVEL del payload (massima priorità — pannello UI app)
+    if payload.get("ditherAmount") is not None:
+        _auto_dither_state["amount"] = float(payload["ditherAmount"])
+    if payload.get("ditherSettleTime") is not None:
+        _auto_dither_state["settle_time"] = float(payload["ditherSettleTime"])
+    if payload.get("ditherSettlePixels") is not None:
+        _auto_dither_state["settle_pixels"] = float(payload["ditherSettlePixels"])
+    if payload.get("ditherFrequency") is not None:
+        _auto_dither_state["frequency"] = max(1, int(payload["ditherFrequency"]))
+    if payload.get("ditherRaOnly") is not None:
+        _auto_dither_state["ra_only"] = bool(payload["ditherRaOnly"])
+    # v0.3.5: risolvi nome reale del train per il Capture.start() di restart
+    # (se l'app passa train vuoto, leggiamo CaptureTrainID → nome dal userdb)
+    effective_train = train or _read_active_train_name() or ""
+    _logger.info("ekos_run: dither config — amount=%.1fpx settle_pixels=%.1f "
+                 "settle_time=%.0fs freq=%d ra_only=%s train=%r",
+                 _auto_dither_state["amount"],
+                 _auto_dither_state["settle_pixels"],
+                 _auto_dither_state["settle_time"],
+                 _auto_dither_state["frequency"],
+                 _auto_dither_state["ra_only"],
+                 effective_train)
     if any_dither and started:
-        await _start_auto_dither(bridge, train)
+        await _start_auto_dither(bridge, effective_train)
     else:
         await _stop_auto_dither()
     return {
@@ -594,6 +751,96 @@ async def ekos_abort() -> dict:
     rc, out = await _dbus_call(EKOS_DBUS_SERVICE, EKOS_CAPTURE_PATH,
                                 "org.kde.kstars.Ekos.Capture.abort", "")
     return {"ok": rc == 0, "raw": out}
+
+
+@router.post("/auto_dither_arm")
+async def auto_dither_arm(
+    payload: dict = Body(default={}),
+    bridge: Bridge = Depends(get_bridge),
+) -> dict:
+    """v0.3.5: arming MANUALE del watcher auto-dither.
+
+    Utile dopo un restart del bridge mentre una sequenza Ekos è già in corso
+    (la sequenza non viene interrotta dal restart, ma il watcher sì perché
+    il task asincrono viene perso). Senza questo endpoint l'utente dovrebbe
+    abort+restart della sequenza dall'app per ri-armare.
+
+    Body:
+      enabled: bool — true accende il watcher, false lo spegne
+      train:   str  — nome del train (es. 'Principale'); se omesso, viene
+                       letto dal userdb tramite CaptureTrainID
+    """
+    enabled = bool(payload.get("enabled", True))
+    if not enabled:
+        await _stop_auto_dither()
+        return {"ok": True, "enabled": False}
+
+    train = payload.get("train") or _read_active_train_name() or ""
+    # Re-read dither settings da Ekos (in case the user has changed them
+    # tra restart e arm)
+    ekos_dither = _read_ekos_dither_settings()
+    if ekos_dither.get("amount") is not None:
+        _auto_dither_state["amount"] = float(ekos_dither["amount"])
+    if ekos_dither.get("settle_time") is not None:
+        _auto_dither_state["settle_time"] = float(ekos_dither["settle_time"])
+    await _start_auto_dither(bridge, train)
+    return {
+        "ok": True, "enabled": True, "train": train,
+        "amount": _auto_dither_state["amount"],
+        "settle_time": _auto_dither_state["settle_time"],
+        "settle_pixels": _auto_dither_state["settle_pixels"],
+    }
+
+
+@router.get("/ekos_dither_settings")
+async def ekos_dither_settings() -> dict:
+    """v0.3.6: ritorna le impostazioni Dither che l'utente ha configurato
+    in Ekos (`~/.config/kstarsrc` sezione [Guide]).
+
+    Letti read-only. NON modifichiamo niente. Serve all'app come "sync
+    iniziale" del pannello Dither config: l'app può chiamare questo
+    endpoint per popolare i suoi slider con i valori Ekos correnti.
+
+    Ritorna:
+      amount        float — DitherPixels (px) — default 3.0 se mancante
+      settle_time   float — DitherSettle (s) — default 10.0
+      frequency     int   — GuideDitherPerJobFrequency — default 1
+      dither_enabled bool — DitherEnabled
+    """
+    cfg = Path.home() / ".config/kstarsrc"
+    out = {
+        "amount": 3.0, "settle_time": 10.0, "settle_pixels": 1.5,
+        "frequency": 1, "dither_enabled": True, "ra_only": False,
+    }
+    if not cfg.exists():
+        return {**out, "userdb_path": str(cfg), "exists": False}
+    try:
+        section = None
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("[") and s.endswith("]"):
+                section = s
+                continue
+            if "=" not in s:
+                continue
+            k, _, v = s.partition("=")
+            k = k.strip(); v = v.strip()
+            if section == "[Guide]":
+                if k == "DitherPixels":
+                    try: out["amount"] = float(v)
+                    except ValueError: pass
+                elif k == "DitherSettle":
+                    try: out["settle_time"] = float(v)
+                    except ValueError: pass
+                elif k == "DitherEnabled":
+                    out["dither_enabled"] = v.lower() in ("true", "1")
+            elif section == "[Capture]":
+                if k == "GuideDitherPerJobFrequency":
+                    try: out["frequency"] = int(v)
+                    except ValueError: pass
+    except Exception as e:
+        _logger.warning("ekos_dither_settings parse error: %s", e)
+    return {**out, "userdb_path": str(cfg), "exists": True}
 
 
 @router.get("/auto_dither_status")

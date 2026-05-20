@@ -65,6 +65,41 @@ class AppState extends ChangeNotifier {
   String? selectedFocuser;
   String? selectedFilterWheel;
 
+  // --- Dither config (persistente, v0.2.36) -------------------------------
+  // Override dei parametri dither applicati dal bridge ad ogni `/ekos_run`.
+  // Se l'utente NON ha mai toccato il pannello, lasciamo null → il bridge
+  // usa i valori che l'utente ha messo in Ekos (kstarsrc [Guide]) come
+  // default. Quando l'utente cambia uno slider, persistiamo qui e mandiamo
+  // l'override esplicito al bridge.
+  double? ditherAmountPx;       // es. 5.0
+  double? ditherSettleSec;      // es. 30.0
+  double? ditherSettlePixels;   // es. 1.5
+  int? ditherFrequency;         // es. 1 (ogni scatto) / 3 (ogni 3 scatti)
+  bool? ditherRaOnly;           // false di default
+
+  /// Salva la dither config + persiste. Passare null su un campo lo riporta
+  /// al default (= leggi da Ekos).
+  void setDitherConfig({
+    double? amountPx, double? settleSec, double? settlePixels,
+    int? frequency, bool? raOnly, bool reset = false,
+  }) {
+    if (reset) {
+      ditherAmountPx = null;
+      ditherSettleSec = null;
+      ditherSettlePixels = null;
+      ditherFrequency = null;
+      ditherRaOnly = null;
+    } else {
+      if (amountPx != null) ditherAmountPx = amountPx;
+      if (settleSec != null) ditherSettleSec = settleSec;
+      if (settlePixels != null) ditherSettlePixels = settlePixels;
+      if (frequency != null) ditherFrequency = frequency;
+      if (raOnly != null) ditherRaOnly = raOnly;
+    }
+    savePrefs();
+    notifyListeners();
+  }
+
   // --- Cooler target temperature (persistente) ----------------------------
   // BUG FIX v0.2.34: lo slider in Capture si resettava a -10°C ogni volta
   // che l'utente lasciava la schermata e tornava. Adesso il valore vive
@@ -205,6 +240,12 @@ class AppState extends ChangeNotifier {
     activeTargetRaHours = p.getDouble('activeTargetRaHours');
     activeTargetDecDeg = p.getDouble('activeTargetDecDeg');
     userTargetTemperatureC = p.getDouble('userTargetTemperatureC') ?? -10.0;
+    // v0.2.36: dither config
+    ditherAmountPx = p.getDouble('ditherAmountPx');
+    ditherSettleSec = p.getDouble('ditherSettleSec');
+    ditherSettlePixels = p.getDouble('ditherSettlePixels');
+    ditherFrequency = p.getInt('ditherFrequency');
+    ditherRaOnly = p.containsKey('ditherRaOnly') ? p.getBool('ditherRaOnly') : null;
     notifyListeners();
   }
 
@@ -230,6 +271,17 @@ class AppState extends ChangeNotifier {
     if (activeTargetRaHours != null) await p.setDouble('activeTargetRaHours', activeTargetRaHours!); else await p.remove('activeTargetRaHours');
     if (activeTargetDecDeg != null) await p.setDouble('activeTargetDecDeg', activeTargetDecDeg!); else await p.remove('activeTargetDecDeg');
     await p.setDouble('userTargetTemperatureC', userTargetTemperatureC);
+    // v0.2.36: dither config
+    if (ditherAmountPx != null) await p.setDouble('ditherAmountPx', ditherAmountPx!);
+    else await p.remove('ditherAmountPx');
+    if (ditherSettleSec != null) await p.setDouble('ditherSettleSec', ditherSettleSec!);
+    else await p.remove('ditherSettleSec');
+    if (ditherSettlePixels != null) await p.setDouble('ditherSettlePixels', ditherSettlePixels!);
+    else await p.remove('ditherSettlePixels');
+    if (ditherFrequency != null) await p.setInt('ditherFrequency', ditherFrequency!);
+    else await p.remove('ditherFrequency');
+    if (ditherRaOnly != null) await p.setBool('ditherRaOnly', ditherRaOnly!);
+    else await p.remove('ditherRaOnly');
   }
 
   /// Aggiorna il setpoint utente della temperatura sensore e lo persiste.

@@ -320,13 +320,32 @@ class ApiClient {
     String train = '',
     bool master = true,
     bool autoStart = true,
+    // v0.2.36: override dither lato app (pannello Guide → Dither config)
+    double? ditherAmount,           // px
+    double? ditherSettleTime,       // sec
+    double? ditherSettlePixels,     // max RMS px durante settling
+    int? ditherFrequency,           // dither ogni N frame (>=1)
+    bool? ditherRaOnly,             // dither solo RA
   }) => post('/api/capture/ekos_run', {
     'jobs': jobs,
     if (target != null) 'target': target,
     'train': train,
     'master': master,
     'auto_start': autoStart,
+    if (ditherAmount != null) 'ditherAmount': ditherAmount,
+    if (ditherSettleTime != null) 'ditherSettleTime': ditherSettleTime,
+    if (ditherSettlePixels != null) 'ditherSettlePixels': ditherSettlePixels,
+    if (ditherFrequency != null) 'ditherFrequency': ditherFrequency,
+    if (ditherRaOnly != null) 'ditherRaOnly': ditherRaOnly,
   });
+  /// v0.2.36: legge i parametri dither correntemente configurati in Ekos
+  /// (kstarsrc [Guide]). Usato dal pannello "Dither config" per il
+  /// pulsante "Sincronizza da Ekos".
+  Future<Map<String, dynamic>> ekosDitherSettings() =>
+      get('/api/capture/ekos_dither_settings');
+  /// v0.3.6: stato live del watcher auto-dither (bridge-native).
+  Future<Map<String, dynamic>> autoDitherStatus() =>
+      get('/api/capture/auto_dither_status');
   Future<Map<String, dynamic>> captureEkosStatus() => get('/api/capture/ekos_status');
   Future<void> captureEkosAbort() => post('/api/capture/ekos_abort');
   Future<void> captureEkosClear() => post('/api/capture/ekos_clear');

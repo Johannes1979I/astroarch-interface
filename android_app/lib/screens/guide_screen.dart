@@ -132,6 +132,8 @@ class _GuideScreenState extends State<GuideScreen> {
                 ]),
                 SectionLabel('Equipaggiamento PHD2'.tr(context)),
                 _equipmentCard(s),
+                SectionLabel('Dither config'.tr(context)),
+                const _DitherConfigCard(),
               ],
             ),
     );
@@ -595,6 +597,241 @@ class _GuidePhd2FullFrameCardState extends State<_GuidePhd2FullFrameCard> {
                 ),
               ),
             ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// v0.2.36: pannello "Dither config".
+/// Override dei parametri dither persistiti in AppState e inviati al
+/// bridge via /ekos_run come campi top-level (`ditherAmount`,
+/// `ditherSettleTime`, `ditherSettlePixels`, `ditherFrequency`,
+/// `ditherRaOnly`). Se l'utente lascia "Auto", il valore corrispondente
+/// non viene inviato e il bridge usa quello di Ekos (kstarsrc [Guide]).
+class _DitherConfigCard extends StatefulWidget {
+  const _DitherConfigCard();
+  @override
+  State<_DitherConfigCard> createState() => _DitherConfigCardState();
+}
+
+class _DitherConfigCardState extends State<_DitherConfigCard> {
+  Map<String, dynamic>? _ekos; // valori letti da /api/capture/ekos_dither_settings
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEkosDefaults();
+  }
+
+  Future<void> _loadEkosDefaults() async {
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    setState(() => _loading = true);
+    try {
+      final r = await s.api!.ekosDitherSettings();
+      if (mounted) setState(() => _ekos = r);
+    } catch (_) {
+      // silent — l'utente vede comunque i propri valori; senza Ekos non
+      // popoliamo i fallback ma il pannello funziona lo stesso
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _syncFromEkos() async {
+    await _loadEkosDefaults();
+    final s = context.read<AppState>();
+    if (_ekos != null) {
+      s.setDitherConfig(
+        amountPx: (_ekos!['amount'] as num?)?.toDouble(),
+        settleSec: (_ekos!['settle_time'] as num?)?.toDouble(),
+        settlePixels: (_ekos!['settle_pixels'] as num?)?.toDouble(),
+        frequency: (_ekos!['frequency'] as num?)?.toInt(),
+        raOnly: _ekos!['ra_only'] as bool?,
+      );
+      if (mounted) showSnack(context, 'Sincronizzato con Ekos'.tr(context));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final ekosAmount = (_ekos?['amount'] as num?)?.toDouble();
+    final ekosSettle = (_ekos?['settle_time'] as num?)?.toDouble();
+    final ekosFreq = (_ekos?['frequency'] as num?)?.toInt();
+
+    final curAmount = s.ditherAmountPx ?? ekosAmount ?? 3.0;
+    final curSettle = s.ditherSettleSec ?? ekosSettle ?? 10.0;
+    final curSettlePx = s.ditherSettlePixels ?? 1.5;
+    final curFreq = s.ditherFrequency ?? ekosFreq ?? 1;
+    final curRaOnly = s.ditherRaOnly ?? false;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      decoration: BoxDecoration(
+        color: T.panel(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: T.line(context)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.scatter_plot, size: 14, color: T.muted(context)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(
+            'Parametri inviati al bridge ad ogni Avvia Sequenza'.tr(context),
+            style: TextStyle(color: T.muted(context), fontSize: 11),
+          )),
+          if (_loading)
+            const SizedBox(width: 14, height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+        ]),
+        const SizedBox(height: 8),
+
+        // PIXEL DITHER
+        _slider(context,
+          label: 'Pixel del dither'.tr(context),
+          valueLabel: '${curAmount.toStringAsFixed(1)} px',
+          subtitle: ekosAmount == null
+              ? 'Default Ekos non disponibile'.tr(context)
+              : '${'Default Ekos'.tr(context)}: ${ekosAmount.toStringAsFixed(1)} px',
+          value: curAmount,
+          min: 0.5, max: 15.0, divisions: 29,
+          isOverride: s.ditherAmountPx != null,
+          onChanged: (v) => s.setDitherConfig(amountPx: v),
+          onReset: () => s.setDitherConfig(amountPx: null,
+              settleSec: s.ditherSettleSec, settlePixels: s.ditherSettlePixels,
+              frequency: s.ditherFrequency, raOnly: s.ditherRaOnly,
+              reset: false),
+        ),
+
+        // SETTLE TIME
+        _slider(context,
+          label: 'Tempo di settling minimo'.tr(context),
+          valueLabel: '${curSettle.toStringAsFixed(0)} s',
+          subtitle: ekosSettle == null
+              ? 'Default Ekos non disponibile'.tr(context)
+              : '${'Default Ekos'.tr(context)}: ${ekosSettle.toStringAsFixed(0)} s',
+          value: curSettle,
+          min: 3, max: 120, divisions: 39,
+          isOverride: s.ditherSettleSec != null,
+          onChanged: (v) => s.setDitherConfig(settleSec: v),
+          onReset: () => s.setDitherConfig(settleSec: null),
+        ),
+
+        // SETTLE PIXELS (max RMS tollerata)
+        _slider(context,
+          label: 'Max errore in settling'.tr(context),
+          valueLabel: '${curSettlePx.toStringAsFixed(1)} px',
+          subtitle: '${'Default'.tr(context)}: 1.5 px',
+          value: curSettlePx,
+          min: 0.3, max: 5.0, divisions: 47,
+          isOverride: s.ditherSettlePixels != null,
+          onChanged: (v) => s.setDitherConfig(settlePixels: v),
+          onReset: () => s.setDitherConfig(settlePixels: null),
+        ),
+
+        // FREQUENCY
+        Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 2),
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Dither ogni N scatti'.tr(context),
+                  style: TextStyle(color: T.text(context), fontWeight: FontWeight.w600, fontSize: 12)),
+              Text(ekosFreq == null
+                      ? 'Default Ekos non disponibile'.tr(context)
+                      : '${'Default Ekos'.tr(context)}: ogni $ekosFreq',
+                  style: TextStyle(color: T.muted(context), fontSize: 11)),
+            ])),
+            DropdownButton<int>(
+              value: curFreq,
+              underline: const SizedBox(),
+              items: const [
+                DropdownMenuItem(value: 1, child: Text('ogni 1')),
+                DropdownMenuItem(value: 2, child: Text('ogni 2')),
+                DropdownMenuItem(value: 3, child: Text('ogni 3')),
+                DropdownMenuItem(value: 5, child: Text('ogni 5')),
+                DropdownMenuItem(value: 10, child: Text('ogni 10')),
+              ],
+              onChanged: (v) {
+                if (v != null) s.setDitherConfig(frequency: v);
+              },
+            ),
+            if (s.ditherFrequency != null) IconButton(
+              icon: Icon(Icons.refresh, size: 18, color: T.muted(context)),
+              tooltip: 'Reset a default Ekos'.tr(context),
+              onPressed: () => s.setDitherConfig(frequency: null),
+            ),
+          ]),
+        ),
+
+        // RA ONLY
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text('Solo RA'.tr(context), style: const TextStyle(fontSize: 13)),
+          subtitle: Text('Dither solo in ascensione retta'.tr(context),
+              style: TextStyle(color: T.muted(context), fontSize: 11)),
+          value: curRaOnly,
+          onChanged: (v) => s.setDitherConfig(raOnly: v),
+        ),
+
+        const SizedBox(height: 4),
+        Row(children: [
+          Expanded(child: GhostButton(
+            label: 'SINCRONIZZA DA EKOS',
+            icon: Icons.sync,
+            onPressed: _loading ? null : _syncFromEkos,
+            small: true,
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: GhostButton(
+            label: 'RESET TUTTO',
+            icon: Icons.restart_alt,
+            small: true,
+            onPressed: () => s.setDitherConfig(reset: true),
+          )),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _slider(BuildContext context, {
+    required String label, required String valueLabel, required String subtitle,
+    required double value, required double min, required double max,
+    required int divisions, required bool isOverride,
+    required ValueChanged<double> onChanged,
+    required VoidCallback onReset,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(label, style: TextStyle(
+              color: T.text(context), fontWeight: FontWeight.w600, fontSize: 12))),
+          Text(valueLabel, style: TextStyle(
+              color: isOverride ? T.accent(context) : T.muted(context),
+              fontWeight: FontWeight.w700, fontSize: 12, fontFamily: 'monospace')),
+          if (isOverride) IconButton(
+            icon: Icon(Icons.close, size: 14, color: T.muted(context)),
+            tooltip: 'Reset a default Ekos'.tr(context),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+            onPressed: onReset,
+          ),
+        ]),
+        Text(subtitle, style: TextStyle(color: T.muted(context), fontSize: 10.5)),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 2.5,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          ),
+          child: Slider(
+            value: value.clamp(min, max),
+            min: min, max: max, divisions: divisions,
+            onChanged: onChanged,
           ),
         ),
       ]),
