@@ -24,6 +24,10 @@ class _JobFormScreenState extends State<JobFormScreen> {
   late final TextEditingController _countCtl;
   late final TextEditingController _delayCtl;
   late final TextEditingController _targetCtl;
+  late final TextEditingController _tempCtl;
+  // v0.2.34: se _useTemp = false, l'ESQ non emette i tag temperatura
+  // → Ekos non forza nulla. Se true, usa _tempCtl come setpoint.
+  late bool _useTemp;
   late String? _filter;
   late int _bin;
   late String _frameType;
@@ -41,6 +45,9 @@ class _JobFormScreenState extends State<JobFormScreen> {
     _countCtl = TextEditingController(text: '${j?.count ?? 20}');
     _delayCtl = TextEditingController(text: '${j?.delaySec ?? 2}');
     _targetCtl = TextEditingController(text: j?.targetName ?? '');
+    _useTemp = j?.temperatureC != null;
+    _tempCtl = TextEditingController(
+        text: (j?.temperatureC ?? -10.0).toStringAsFixed(1));
     _filter = j?.filter;
     _bin = j?.binX ?? 1;
     _frameType = j?.frameType ?? 'FRAME_LIGHT';
@@ -57,6 +64,7 @@ class _JobFormScreenState extends State<JobFormScreen> {
     _countCtl.dispose();
     _delayCtl.dispose();
     _targetCtl.dispose();
+    _tempCtl.dispose();
     super.dispose();
   }
 
@@ -75,6 +83,11 @@ class _JobFormScreenState extends State<JobFormScreen> {
     j.filter = _filter;
     j.ditherEachFrame = _dither;
     j.targetName = _targetCtl.text.trim().isEmpty ? null : _targetCtl.text.trim();
+    // v0.2.34: setpoint temperatura. Se l'utente non lo abilita,
+    // resta null → ESQ non forza la T (Ekos mantiene quella attuale).
+    j.temperatureC = _useTemp
+        ? double.tryParse(_tempCtl.text.replaceAll(',', '.'))
+        : null;
     if (j.exposureSec <= 0 || j.count <= 0) {
       showSnack(context, 'Tempo e count devono essere > 0'.tr(context), error: true);
       return;
@@ -184,12 +197,44 @@ class _JobFormScreenState extends State<JobFormScreen> {
               isDense: true,
             ),
           ),
+          // v0.2.34: setpoint temperatura sensore PER QUESTO JOB.
+          // Se OFF: Ekos parte senza forzare nulla.
+          // Se ON: Ekos attende che la camera raggiunga la T prima dello scatto.
+          SectionLabel('Temperatura sensore (opzionale)'.tr(context)),
+          Container(
+            decoration: BoxDecoration(
+              color: T.panel(context),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: T.line(context)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Column(children: [
+              SwitchListTile(
+                title: Text('Forza T sensore prima dello scatto'.tr(context),
+                    style: const TextStyle(fontSize: 13)),
+                subtitle: Text(_useTemp
+                    ? 'Ekos attende il setpoint prima di iniziare'.tr(context)
+                    : 'Ekos parte alla T attuale del cooler'.tr(context),
+                    style: TextStyle(color: T.muted(context), fontSize: 11)),
+                value: _useTemp,
+                onChanged: (v) => setState(() => _useTemp = v),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+              if (_useTemp) Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                child: _num(_tempCtl, 'TARGET T (°C)'.tr(context), '-10',
+                    decimal: true, signed: true),
+              ),
+            ]),
+          ),
         ],
       ),
     );
   }
 
-  Widget _num(TextEditingController c, String label, String hint, {bool decimal = false}) {
+  Widget _num(TextEditingController c, String label, String hint,
+      {bool decimal = false, bool signed = false}) {
     return Container(
       decoration: BoxDecoration(
         color: T.panel(context),
@@ -201,10 +246,14 @@ class _JobFormScreenState extends State<JobFormScreen> {
         Text(label, style: TextStyle(color: T.muted(context), fontSize: 10, letterSpacing: 1.2)),
         TextField(
           controller: c,
-          keyboardType: TextInputType.numberWithOptions(decimal: decimal, signed: false),
+          keyboardType: TextInputType.numberWithOptions(decimal: decimal, signed: signed),
           inputFormatters: [
-            if (decimal)
+            if (decimal && signed)
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9\.\-]'))
+            else if (decimal)
               FilteringTextInputFormatter.allow(RegExp(r'[0-9\.]'))
+            else if (signed)
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))
             else
               FilteringTextInputFormatter.digitsOnly,
           ],

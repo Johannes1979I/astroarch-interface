@@ -79,6 +79,10 @@ class _GuideScreenState extends State<GuideScreen> {
                 // Vista stella di guida — il riquadro con crosshair che si
                 // vede dentro PHD2. Si aggiorna automaticamente.
                 const _GuideStarImageCard(),
+                const SizedBox(height: 8),
+                // v0.2.34: frame completo PHD2 — identico a quello che vedi
+                // nella finestra principale di PHD2 sul desktop del RPi.
+                const _GuidePhd2FullFrameCard(),
                 const SizedBox(height: 10),
                 GridView.count(
                   shrinkWrap: true,
@@ -442,6 +446,158 @@ class _GuideStarImageCardState extends State<_GuideStarImageCard> {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// v0.2.34: Mostra il FRAME COMPLETO della camera di guida PHD2 (non solo
+/// il crop intorno alla stella). Internamente chiama /api/guide/full_frame
+/// che usa PHD2 `save_image` → FITS → auto-stretch → PNG.
+///
+/// Polling più lento del crop (4s) perché ogni richiesta scrive/legge un
+/// FITS dal disco del RPi (costo I/O).
+class _GuidePhd2FullFrameCard extends StatefulWidget {
+  const _GuidePhd2FullFrameCard();
+  @override
+  State<_GuidePhd2FullFrameCard> createState() => _GuidePhd2FullFrameCardState();
+}
+
+class _GuidePhd2FullFrameCardState extends State<_GuidePhd2FullFrameCard> {
+  Timer? _timer;
+  Uint8List? _png;
+  int? _w, _h;
+  String? _err;
+  bool _inflight = false;
+  bool _enabled = false; // OFF di default — la richiesta è pesante (FITS)
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _toggle() {
+    setState(() => _enabled = !_enabled);
+    if (_enabled) {
+      _tick();
+      _timer = Timer.periodic(const Duration(seconds: 4), (_) => _tick());
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  Future<void> _tick() async {
+    if (_inflight) return;
+    final s = context.read<AppState>();
+    if (s.api == null) return;
+    _inflight = true;
+    try {
+      final j = await s.api!.guideFullFrame(maxDim: 1024);
+      final b64 = j['png_base64'] as String?;
+      if (b64 == null) throw Exception('missing png');
+      final bytes = base64.decode(b64);
+      if (!mounted) return;
+      setState(() {
+        _png = bytes;
+        _w = (j['width'] as num?)?.toInt();
+        _h = (j['height'] as num?)?.toInt();
+        _err = null;
+      });
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _err = e.status == 409
+            ? 'PHD2: camera non in loop. Premi LOOP per attivare il flusso.'.tr(context)
+            : '${'Errore: '.tr(context)}${_extractDetailLocalFF(e.body)}');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _err = e.toString());
+    } finally {
+      _inflight = false;
+    }
+  }
+
+  String _extractDetailLocalFF(String body) {
+    try {
+      final j = jsonDecode(body);
+      if (j is Map && j['detail'] != null) return j['detail'].toString();
+    } catch (_) {}
+    return body;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: T.panel(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: T.line(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          onTap: _toggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(children: [
+              Icon(_enabled ? Icons.videocam : Icons.videocam_off,
+                  color: _enabled ? T.ok(context) : T.muted(context), size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Frame completo PHD2'.tr(context),
+                      style: TextStyle(color: T.text(context),
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(_enabled
+                      ? 'Refresh ogni 4s · via save_image'.tr(context)
+                      : 'Tap per attivare (richiede camera in loop)'.tr(context),
+                      style: TextStyle(color: T.muted(context), fontSize: 10.5)),
+                ],
+              )),
+              Switch(value: _enabled, onChanged: (_) => _toggle()),
+            ]),
+          ),
+        ),
+        if (_enabled) Container(
+          color: Colors.black,
+          child: AspectRatio(
+            aspectRatio: (_w != null && _h != null && _w! > 0 && _h! > 0)
+                ? _w! / _h! : 1.5,
+            child: Stack(fit: StackFit.expand, children: [
+              if (_png != null)
+                InteractiveViewer(minScale: 1, maxScale: 8,
+                    child: Image.memory(_png!, fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.medium))
+              else if (_err != null)
+                Center(child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(_err!, textAlign: TextAlign.center,
+                      style: TextStyle(color: T.muted(context), fontSize: 12)),
+                ))
+              else
+                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              if (_png != null && _w != null && _h != null) Positioned(
+                top: 6, left: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(color: Colors.black54,
+                      borderRadius: BorderRadius.circular(6)),
+                  child: Text('${_w}×$_h',
+                      style: const TextStyle(color: Colors.white,
+                          fontFamily: 'monospace', fontSize: 9)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
 }

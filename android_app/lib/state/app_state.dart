@@ -65,6 +65,18 @@ class AppState extends ChangeNotifier {
   String? selectedFocuser;
   String? selectedFilterWheel;
 
+  // --- Cooler target temperature (persistente) ----------------------------
+  // BUG FIX v0.2.34: lo slider in Capture si resettava a -10°C ogni volta
+  // che l'utente lasciava la schermata e tornava. Adesso il valore vive
+  // qui in AppState ed è persistito su SharedPreferences (chiave
+  // 'userTargetTemperatureC'), così sopravvive a:
+  //   • cambio di schermata (rebuild del widget)
+  //   • kill dell'app
+  //   • riavvio del telefono
+  //   • switch tra bridge multipli (è una preferenza utente, non per-RPi)
+  // -10°C resta il default per chi non l'ha mai impostato.
+  double userTargetTemperatureC = -10.0;
+
   // --- Active target (oggetto inquadrato dall'utente) ---------------------
   // Il target è memorizzato qui IN APP, persistente. Ogni volta che cambia
   // viene anche spinto su Ekos via setTargetCoords così Ekos resta allineato
@@ -192,6 +204,7 @@ class AppState extends ChangeNotifier {
     activeTargetName = p.getString('activeTargetName');
     activeTargetRaHours = p.getDouble('activeTargetRaHours');
     activeTargetDecDeg = p.getDouble('activeTargetDecDeg');
+    userTargetTemperatureC = p.getDouble('userTargetTemperatureC') ?? -10.0;
     notifyListeners();
   }
 
@@ -216,6 +229,15 @@ class AppState extends ChangeNotifier {
     if (activeTargetName != null) await p.setString('activeTargetName', activeTargetName!); else await p.remove('activeTargetName');
     if (activeTargetRaHours != null) await p.setDouble('activeTargetRaHours', activeTargetRaHours!); else await p.remove('activeTargetRaHours');
     if (activeTargetDecDeg != null) await p.setDouble('activeTargetDecDeg', activeTargetDecDeg!); else await p.remove('activeTargetDecDeg');
+    await p.setDouble('userTargetTemperatureC', userTargetTemperatureC);
+  }
+
+  /// Aggiorna il setpoint utente della temperatura sensore e lo persiste.
+  /// Chiamato da CoolerPanel ogni volta che il testo cambia o IMPOSTA è premuto.
+  void setUserTargetTemperatureC(double v) {
+    userTargetTemperatureC = v;
+    savePrefs();
+    notifyListeners();
   }
 
   // === Multi-bridge management ===

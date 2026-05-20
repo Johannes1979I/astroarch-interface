@@ -20,7 +20,11 @@ class CaptureScreen extends StatefulWidget {
 }
 
 class _CaptureScreenState extends State<CaptureScreen> {
-  final TextEditingController _tempCtl = TextEditingController(text: '-10');
+  // BUG FIX v0.2.34: inizializzato a stringa vuota qui — viene popolato in
+  // initState con AppState.userTargetTemperatureC, persistito su disco.
+  // Prima era TextEditingController(text: '-10') hardcoded → il valore
+  // tornava sempre a -10°C ad ogni rebuild del widget (cambio schermata).
+  final TextEditingController _tempCtl = TextEditingController();
   late final SequenceRunner _runner;
   bool _runnerInited = false;
 
@@ -40,6 +44,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
       s.loadCaptureJobs();
       _runner = SequenceRunner(s);
       _runner.addListener(_onRunnerChange);
+      // Carica la T setpoint persistita (fix v0.2.34: prima si resettava
+      // sempre a -10 ad ogni cambio schermata).
+      _tempCtl.text = s.userTargetTemperatureC.toStringAsFixed(1);
+      // Persist on every edit so navigation away preserves the value.
+      _tempCtl.addListener(() {
+        final v = double.tryParse(_tempCtl.text.replaceAll(',', '.'));
+        if (v != null && v != s.userTargetTemperatureC) {
+          s.setUserTargetTemperatureC(v);
+        }
+      });
       setState(() => _runnerInited = true);
     });
     // Start polling Ekos capture status: anche se l'utente non ha appena

@@ -18,6 +18,12 @@ class CaptureJob {
   bool ditherEachFrame;
   String? targetName; // opzionale (es. "M31")
   String? notes;
+  // v0.2.34: setpoint temperatura sensore PER JOB (opzionale).
+  // Se null, l'ESQ omette i tag <TemperatureValue>/<TemperatureEnforced>
+  // → Ekos parte senza forzare nulla (usa lo stato corrente del cooler).
+  // Se valorizzato, Ekos attende che la camera raggiunga il setpoint
+  // prima di partire con gli scatti del job.
+  double? temperatureC;
 
   // Stato runtime (non persistito in disk)
   CaptureJobStatus status;
@@ -40,6 +46,7 @@ class CaptureJob {
     this.ditherEachFrame = false,
     this.targetName,
     this.notes,
+    this.temperatureC,
     this.status = CaptureJobStatus.pending,
     this.doneCount = 0,
     this.lastError,
@@ -61,6 +68,7 @@ class CaptureJob {
     ditherEachFrame: ditherEachFrame,
     targetName: targetName,
     notes: notes,
+    temperatureC: temperatureC,
   );
 
   Map<String, dynamic> toJson() => {
@@ -79,6 +87,7 @@ class CaptureJob {
     'ditherEachFrame': ditherEachFrame,
     'targetName': targetName,
     'notes': notes,
+    'temperatureC': temperatureC,
   };
 
   static CaptureJob fromJson(Map<String, dynamic> j) => CaptureJob(
@@ -97,6 +106,7 @@ class CaptureJob {
     ditherEachFrame: j['ditherEachFrame'] == true,
     targetName: j['targetName'],
     notes: j['notes'],
+    temperatureC: (j['temperatureC'] as num?)?.toDouble(),
   );
 
   static String _genId() {
@@ -111,6 +121,7 @@ class CaptureJob {
     bits.add(frameType.replaceFirst('FRAME_', ''));
     bits.add('${exposureSec.toStringAsFixed(exposureSec < 1 ? 2 : 0)}s');
     bits.add('×$count');
+    if (temperatureC != null) bits.add('${temperatureC!.toStringAsFixed(0)}°C');
     return bits.join(' · ');
   }
 

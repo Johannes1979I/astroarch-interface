@@ -49,6 +49,8 @@ class _CoolerPanelState extends State<CoolerPanel> {
     setState(() => _busy = true);
     final newState = !currentlyOn;
     final target = _f();
+    // v0.2.34: anche il toggle ON-OFF persiste il setpoint corrente
+    if (newState) s.setUserTargetTemperatureC(target);
     try {
       await s.api!.cameraCooler(newState, target: target, device: widget.camera);
       await Future.delayed(const Duration(milliseconds: 600));
@@ -80,6 +82,9 @@ class _CoolerPanelState extends State<CoolerPanel> {
     if (_busy || s.api == null) return;
     setState(() => _busy = true);
     final t = _f();
+    // v0.2.34: persist immediato così se l'utente esce dalla schermata
+    // subito dopo aver premuto IMPOSTA, il valore non si perde.
+    s.setUserTargetTemperatureC(t);
     try {
       await s.api!.cameraCooler(true, target: t, device: widget.camera);
       await Future.delayed(const Duration(milliseconds: 400));

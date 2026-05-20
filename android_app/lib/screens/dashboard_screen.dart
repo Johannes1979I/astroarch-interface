@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../app_version.dart';
@@ -11,8 +12,31 @@ import 'connections_screen.dart';
 import 'live_view_screen.dart';
 import 'shell_screen.dart';
 
-class DashboardScreen extends StatelessWidget {
+/// Dashboard. v0.2.34: convertita a StatefulWidget per avere un tick
+/// periodico (2s) che ricalcola le porzioni time-based dei tile
+/// (es. badge "live" del GUIDE che si spegne dopo 5s di silenzio PHD2).
+/// AppState resta la fonte di verità, ma quando PHD2 smette di mandare
+/// eventi non arrivano notifyListeners e la UI rimarrebbe ferma.
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  Timer? _tick;
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -425,14 +449,57 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _guideCard(BuildContext c, AppState s) {
-    final rms = s.phd2Live['rms_total'];
-    final st = s.phd2Live['app_state'] ?? 'Stopped';
+    // v0.2.34 fix: il tile prima leggeva solo `rms_total` e `app_state`,
+    // che PHD2 popola solo durante guiding attivo. Risultato: il tile
+    // appariva fermo/statico anche quando PHD2 era connesso e in loop.
+    //
+    // Ora mostriamo:
+    //   - stato connessione PHD2 (online/offline)
+    //   - app_state real-time (Stopped/Looping/Calibrating/Guiding/Settling…)
+    //   - RMS + SNR durante guiding
+    //   - badge "LIVE" se l'ultimo evento PHD2 è recente (<5s)
+    final live = s.phd2Live;
+    final connected = s.phd2Conn == 'connected';
+    final st = live['app_state']?.toString() ?? '—';
+    final rms = (live['rms_total'] as num?)?.toDouble();
+    final snr = (live['snr'] as num?)?.toDouble();
+    final lastTs = (live['last_event_ts'] as num?)?.toDouble();
+    final nowSec = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final isLive = lastTs != null && (nowSec - lastTs) < 5.0;
+    final starLost = live['star_lost'] == true;
+
+    String value;
+    if (!connected) {
+      value = 'offline';
+    } else if (rms != null && st == 'Guiding') {
+      value = '${rms.toStringAsFixed(2)}″'
+          '${snr != null ? ' · SNR ${snr.toStringAsFixed(0)}' : ''}';
+    } else if (st == '—') {
+      value = 'idle';
+    } else {
+      value = st;
+    }
+
+    Color badge;
+    String badgeText;
+    if (!connected) {
+      badge = T.muted(c); badgeText = 'off';
+    } else if (starLost) {
+      badge = T.err(c); badgeText = 'lost';
+    } else if (st == 'Guiding') {
+      badge = T.ok(c); badgeText = isLive ? 'live' : 'on';
+    } else if (st == 'Looping' || st == 'Calibrating' || st == 'Settling') {
+      badge = T.warn(c); badgeText = st.toLowerCase();
+    } else {
+      badge = T.muted(c); badgeText = isLive ? 'live' : st.toLowerCase();
+    }
+
     return StatusCard(
       header: 'GUIDE',
-      value: rms == null ? '—' : 'RMS ${(rms as num).toStringAsFixed(2)}″',
-      subtitle: 'PHD2 · $st',
-      badgeColor: st == 'Guiding' ? T.ok(c) : T.muted(c),
-      badgeText: st == 'Guiding' ? 'on' : st.toString(),
+      value: value,
+      subtitle: 'PHD2 · ${connected ? st : "—"}',
+      badgeColor: badge,
+      badgeText: badgeText,
     );
   }
 

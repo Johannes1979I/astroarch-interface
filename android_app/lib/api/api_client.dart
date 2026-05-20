@@ -424,6 +424,14 @@ class ApiClient {
   /// Lancia ApiException(409) se PHD2 non ha una stella selezionata.
   Future<Map<String, dynamic>> guideStarImage() => get('/api/guide/star_image');
 
+  /// v0.3.3: frame INTERO della camera di guida via PHD2 save_image.
+  /// È quello che vedi nella finestra principale di PHD2 sul desktop.
+  /// Ritorna {width, height, png_base64}. Internamente PHD2 salva un FITS,
+  /// il bridge lo legge, applica auto-stretch e ritorna PNG.
+  /// [maxDim] = downscale lato max (px). 0 = nessun resize.
+  Future<Map<String, dynamic>> guideFullFrame({int maxDim = 1024}) =>
+      get('/api/guide/full_frame?max_dim=$maxDim');
+
   // Observatory
   Future<Map<String, dynamic>> observatoryStatus() => get('/api/observatory/status');
   Future<void> domeShutter(String device, bool open) =>
