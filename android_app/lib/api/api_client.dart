@@ -429,8 +429,13 @@ class ApiClient {
   /// Ritorna {width, height, png_base64}. Internamente PHD2 salva un FITS,
   /// il bridge lo legge, applica auto-stretch e ritorna PNG.
   /// [maxDim] = downscale lato max (px). 0 = nessun resize.
+  ///
+  /// v0.2.35 fix: prima il query string era embedded nel path (`'/api/guide/full_frame?max_dim=$maxDim'`).
+  /// Uri.replace(path:) URL-encodava il `?` come `%3F` → bridge restituiva 404 Not Found
+  /// perché cercava un path literal con `%3F`. Adesso usiamo il secondo arg `q`
+  /// come tutti gli altri endpoint del file.
   Future<Map<String, dynamic>> guideFullFrame({int maxDim = 1024}) =>
-      get('/api/guide/full_frame?max_dim=$maxDim');
+      get('/api/guide/full_frame', {'max_dim': '$maxDim'});
 
   // Observatory
   Future<Map<String, dynamic>> observatoryStatus() => get('/api/observatory/status');
